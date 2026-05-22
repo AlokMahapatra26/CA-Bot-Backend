@@ -1,0 +1,28 @@
+{
+  "name": "twilio-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "Minimal Node.js Express WhatsApp bot using Twilio",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "node --watch -r ts-node/register src/index.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4",
+    "@types/qrcode": "^1.5.6",
+    "@whiskeysockets/baileys": "^7.0.0-rc11",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.7",
+    "@types/qrcode-terminal": "^0.12.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
