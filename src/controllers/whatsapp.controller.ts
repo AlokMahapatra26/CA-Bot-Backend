@@ -122,9 +122,9 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
       if (nextStatus === 'AWAITING_PHONE' && client.phone_number) nextStatus = 'AWAITING_DOB';
       if (nextStatus === 'AWAITING_DOB' && client.date_of_birth) nextStatus = 'AWAITING_EMAIL';
       if (nextStatus === 'AWAITING_EMAIL' && client.email) nextStatus = 'AWAITING_BANK_NAME';
-      if (nextStatus === 'AWAITING_BANK_NAME' && client.bank_name) nextStatus = 'AWAITING_BANK_ACC';
-      if (nextStatus === 'AWAITING_BANK_ACC' && client.bank_account_number) nextStatus = 'AWAITING_BANK_IFSC';
-      if (nextStatus === 'AWAITING_BANK_IFSC' && client.bank_ifsc) nextStatus = 'AWAITING_PAN';
+      if (nextStatus === 'AWAITING_BANK_NAME' && filing.bank_name) nextStatus = 'AWAITING_BANK_ACC';
+      if (nextStatus === 'AWAITING_BANK_ACC' && filing.bank_account_number) nextStatus = 'AWAITING_BANK_IFSC';
+      if (nextStatus === 'AWAITING_BANK_IFSC' && filing.bank_ifsc) nextStatus = 'AWAITING_PAN';
 
       if (nextStatus === 'AWAITING_NAME') {
         await sendMessage(
@@ -318,7 +318,7 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
           return;
         }
 
-        await updateClient(client.id, { bank_name: incomingMessage });
+        await updateFiling(filing.id, { bank_name: incomingMessage });
         await updateFiling(filing.id, { status: 'AWAITING_BANK_ACC' });
 
         await sendMessage(`Understood. Bank set to *${incomingMessage}*.\n\n*Step 4/6:*\nPlease reply with your *Bank Account Number*.`);
@@ -338,7 +338,7 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
           return;
         }
 
-        await updateClient(client.id, { bank_account_number: accCleaned });
+        await updateFiling(filing.id, { bank_account_number: accCleaned });
         await updateFiling(filing.id, { status: 'AWAITING_BANK_IFSC' });
 
         await sendMessage(`Got it.\n\n*Step 5/6:*\nPlease reply with your bank's *IFSC Code* (e.g., HDFC0001234).`);
@@ -360,7 +360,7 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
           return;
         }
 
-        await updateClient(client.id, { bank_ifsc: ifsc });
+        await updateFiling(filing.id, { bank_ifsc: ifsc });
         await updateFiling(filing.id, { status: 'AWAITING_PAN' });
 
         await sendMessage(
@@ -377,7 +377,7 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
           let nextStatus: ItrStatus = 'COMPLETED';
           let responseMsg = `✅ PAN Card received, *${userName}*!\n\n`;
 
-          if (!filing.aadhaar_media_url) {
+          if (!client.aadhaar_media_url) {
             nextStatus = 'AWAITING_AADHAAR';
             responseMsg += `*Next Document:*\nPlease upload a clear photo or PDF of your *Aadhaar Card*.`;
           } else if (!filing.form16_media_url) {
@@ -387,7 +387,8 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
             responseMsg += `🎉 All documents received successfully! Your filing request is now locked and under review by our experts. Thank you! 🙏`;
           }
 
-          await updateFiling(filing.id, { status: nextStatus, pan_media_url: mediaUrl });
+          await updateClient(client.id, { pan_media_url: mediaUrl });
+          await updateFiling(filing.id, { status: nextStatus });
           await sendMessage(responseMsg);
         } else {
           await sendMessage(
@@ -407,14 +408,15 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
           if (!filing.form16_media_url) {
             nextStatus = 'AWAITING_FORM16';
             responseMsg += `*Next Document:*\nPlease upload your *Form 16* (issued by your employer).`;
-          } else if (!filing.pan_media_url) {
+          } else if (!client.pan_media_url) {
             nextStatus = 'AWAITING_PAN';
             responseMsg += `*Next Document:*\nPlease upload a clear photo or PDF of your *PAN Card*.`;
           } else {
             responseMsg += `🎉 All documents received successfully! Your filing request is now locked and under review by our experts. Thank you! 🙏`;
           }
 
-          await updateFiling(filing.id, { status: nextStatus, aadhaar_media_url: mediaUrl });
+          await updateClient(client.id, { aadhaar_media_url: mediaUrl });
+          await updateFiling(filing.id, { status: nextStatus });
           await sendMessage(responseMsg);
         } else {
           await sendMessage(
@@ -431,10 +433,10 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
           let nextStatus: ItrStatus = 'COMPLETED';
           let responseMsg = `✅ Form 16 received, *${userName}*!\n\n`;
 
-          if (!filing.pan_media_url) {
+          if (!client.pan_media_url) {
             nextStatus = 'AWAITING_PAN';
             responseMsg += `*Next Document:*\nPlease upload a clear photo or PDF of your *PAN Card*.`;
-          } else if (!filing.aadhaar_media_url) {
+          } else if (!client.aadhaar_media_url) {
             nextStatus = 'AWAITING_AADHAAR';
             responseMsg += `*Next Document:*\nPlease upload a clear photo or PDF of your *Aadhaar Card*.`;
           } else {

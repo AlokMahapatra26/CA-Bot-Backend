@@ -31,9 +31,8 @@ export interface Client {
   full_name: string | null;
   date_of_birth: string | null;
   email: string | null;
-  bank_name: string | null;
-  bank_account_number: string | null;
-  bank_ifsc: string | null;
+  pan_media_url: string | null;
+  aadhaar_media_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -43,8 +42,9 @@ export interface ItrFiling {
   client_id: string;
   fy_year: string;
   status: ItrStatus;
-  pan_media_url: string | null;
-  aadhaar_media_url: string | null;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_ifsc: string | null;
   form16_media_url: string | null;
   notes: string | null;
   filing_status: string;
