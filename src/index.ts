@@ -47,10 +47,10 @@ app.post('/api/bot/logout', async (req, res) => {
 
 // ── Send message (called by Next.js server actions) ───────────────────────────
 app.post('/api/send-message', async (req, res) => {
-  const { jid, text } = req.body;
+  const { jid, text, documentUrl, fileName } = req.body;
 
-  if (!jid || !text) {
-    return res.status(400).json({ error: 'Missing jid or text parameter' });
+  if (!jid || (!text && !documentUrl)) {
+    return res.status(400).json({ error: 'Missing jid, text or documentUrl parameter' });
   }
 
   if (!sock) {
@@ -58,8 +58,18 @@ app.post('/api/send-message', async (req, res) => {
   }
 
   try {
-    await sock.sendMessage(jid, { text });
-    console.log(`Sent manual notification to ${jid}`);
+    if (documentUrl) {
+      await sock.sendMessage(jid, {
+        document: { url: documentUrl },
+        mimetype: 'application/pdf',
+        fileName: fileName || 'ITRV_Acknowledgement.pdf',
+        caption: text || undefined
+      });
+      console.log(`Sent document notification to ${jid} with URL: ${documentUrl}`);
+    } else {
+      await sock.sendMessage(jid, { text });
+      console.log(`Sent manual text notification to ${jid}`);
+    }
     return res.json({ success: true });
   } catch (error: any) {
     console.error('Failed to send manual message:', error);
