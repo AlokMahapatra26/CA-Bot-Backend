@@ -2,6 +2,15 @@
 
 All notable changes to the CA-bOt WhatsApp Bot Backend will be documented in this file.
 
+## [1.4.0] - 2026-05-23
+### Changed
+- **Provider-Based Messaging Architecture**:
+  - Abstracted WhatsApp messaging into a generic `IWhatsAppProvider` interface.
+  - Created `BaileysProvider` to encapsulate all `@whiskeysockets/baileys` logic.
+  - Added a stub `CloudProvider` for future migration to WhatsApp Cloud API.
+  - Added `WHATSAPP_PROVIDER` environment variable (defaults to `baileys`) for easy provider swapping.
+  - Refactored `whatsapp.controller.ts` and `index.ts` to use a global singleton `messageService` without any direct coupling to Baileys.
+
 ## [1.3.1] - 2026-05-23
 ### Changed
 - **Dynamic Onboarding Step Routing**:

@@ -6,4 +6,6 @@ export const config = {
   PORT: process.env.PORT || 3000,
   SUPABASE_URL: process.env.SUPABASE_URL || '',
   SUPABASE_KEY: process.env.SUPABASE_KEY || '',
+  /** Which WhatsApp provider to use: 'baileys' (default) or 'cloud' */
+  WHATSAPP_PROVIDER: (process.env.WHATSAPP_PROVIDER || 'baileys') as 'baileys' | 'cloud',
 };

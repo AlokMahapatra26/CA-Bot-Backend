@@ -1,7 +1,7 @@
 import express from 'express';
 import { config } from './config/env';
-import { connectToWhatsApp, logoutWhatsApp, sock, botStatus, latestQR, botNumber } from './services/baileys.service';
-import { handleBaileysMessage } from './controllers/whatsapp.controller';
+import { messageService } from './providers';
+import { handleIncomingMessage } from './controllers/whatsapp.controller';
 
 const app = express();
 app.use(express.json());
@@ -27,18 +27,14 @@ app.get('/', (req, res) => {
 
 // ── Bot Status (QR + connection state) ───────────────────────────────────────
 app.get('/api/bot/status', (req, res) => {
-  res.json({
-    status: botStatus,         // 'disconnected' | 'connecting' | 'connected'
-    qr: latestQR,             // base64 PNG data URL when connecting, null otherwise
-    connected: botStatus === 'connected',
-    botNumber: botNumber,     // phone number of the bot if connected
-  });
+  const status = messageService.getStatus();
+  res.json(status);
 });
 
 // ── Logout / Disconnect bot ───────────────────────────────────────────────────
 app.post('/api/bot/logout', async (req, res) => {
   try {
-    await logoutWhatsApp();
+    await messageService.logout();
     res.json({ success: true, message: 'Bot disconnected and session cleared.' });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -53,21 +49,17 @@ app.post('/api/send-message', async (req, res) => {
     return res.status(400).json({ error: 'Missing jid, text or documentUrl parameter' });
   }
 
-  if (!sock) {
-    return res.status(503).json({ error: 'WhatsApp socket connection is not active' });
+  const { connected } = messageService.getStatus();
+  if (!connected) {
+    return res.status(503).json({ error: 'WhatsApp connection is not active' });
   }
 
   try {
     if (documentUrl) {
-      await sock.sendMessage(jid, {
-        document: { url: documentUrl },
-        mimetype: 'application/pdf',
-        fileName: fileName || 'ITRV_Acknowledgement.pdf',
-        caption: text || undefined
-      });
+      await messageService.sendDocument(jid, documentUrl, fileName || 'ITRV_Acknowledgement.pdf', text || undefined);
       console.log(`Sent document notification to ${jid} with URL: ${documentUrl}`);
     } else {
-      await sock.sendMessage(jid, { text });
+      await messageService.sendText(jid, text);
       console.log(`Sent manual text notification to ${jid}`);
     }
     return res.json({ success: true });
@@ -79,5 +71,5 @@ app.post('/api/send-message', async (req, res) => {
 
 app.listen(config.PORT, async () => {
   console.log(`Server is running on port ${config.PORT}`);
-  await connectToWhatsApp(handleBaileysMessage);
+  await messageService.initialize(handleIncomingMessage);
 });

@@ -1,4 +1,4 @@
-import { WASocket, proto, downloadMediaMessage, WAMessage } from '@whiskeysockets/baileys';
+import { messageService, type IncomingMessage } from '../providers';
 import {
   getClient,
   createClientRecord,
@@ -30,14 +30,12 @@ const isGreeting = (text: string): boolean => {
 };
 
 // ─────────────────────────────────────────────────────────────────
-// MAIN HANDLER
+// MAIN HANDLER (Provider-Agnostic)
 // ─────────────────────────────────────────────────────────────────
 
-export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessageInfo) => {
+export const handleIncomingMessage = async (message: IncomingMessage) => {
   try {
-    if (!msg.key) return;
-    const senderJid = msg.key.remoteJid;
-    if (!senderJid) return;
+    const { senderJid, text: incomingMessage, isMedia, rawMessage, rawMessageContent } = message;
 
     if (
       senderJid === 'status@broadcast' ||
@@ -46,27 +44,12 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
       senderJid.endsWith('@broadcast')
     ) return;
 
-    let incomingMessage = '';
-    const messageContent = msg.message;
-    if (!messageContent) return;
-
-    if (messageContent.conversation) {
-      incomingMessage = messageContent.conversation.trim();
-    } else if (messageContent.extendedTextMessage?.text) {
-      incomingMessage = messageContent.extendedTextMessage.text.trim();
-    } else if (messageContent.imageMessage?.caption) {
-      incomingMessage = messageContent.imageMessage.caption.trim();
-    } else if (messageContent.documentMessage?.caption) {
-      incomingMessage = messageContent.documentMessage.caption.trim();
-    }
-
-    const isMedia = !!(messageContent.imageMessage || messageContent.documentMessage);
     let mediaUrl: string | null = null;
 
     console.log(`Received message from ${senderJid}: text="${incomingMessage}", isMedia=${isMedia}`);
 
     const sendMessage = async (text: string) => {
-      await sock.sendMessage(senderJid, { text });
+      await messageService.sendText(senderJid, text);
     };
 
     if (!supabase) {
@@ -74,23 +57,11 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
       return;
     }
 
-    // Upload media if present
+    // Upload media if present — uses provider abstraction for download
     if (isMedia) {
-      const buffer = await downloadMediaMessage(msg as WAMessage, 'buffer', {}, {
-        logger: console as any,
-        reuploadRequest: sock.updateMediaMessage,
-      });
-      if (buffer) {
-        let mimetype = '';
-        let extension = '';
-        if (messageContent.imageMessage) {
-          mimetype = messageContent.imageMessage.mimetype || 'image/jpeg';
-          extension = mimetype.split('/')[1] || 'jpg';
-        } else if (messageContent.documentMessage) {
-          mimetype = messageContent.documentMessage.mimetype || 'application/pdf';
-          extension = messageContent.documentMessage.fileName?.split('.').pop() || 'pdf';
-        }
-        mediaUrl = await uploadDocument(senderJid, buffer as Buffer, mimetype, extension);
+      const media = await messageService.downloadMedia(rawMessage, rawMessageContent);
+      if (media) {
+        mediaUrl = await uploadDocument(senderJid, media.buffer, media.mimetype, media.extension);
         if (!mediaUrl) {
           await sendMessage('⚠️ Failed to upload your document. Please try again.');
           return;
