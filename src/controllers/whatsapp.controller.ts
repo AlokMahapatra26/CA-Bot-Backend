@@ -84,6 +84,126 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
     const botStatus = client.bot_status || 'REGISTERING_NAME';
     const isRegistering = botStatus !== 'PENDING_APPROVAL' && botStatus !== 'REGISTERED';
 
+    // ── BACK / UNDO HANDLER (Conversation backtracking) ───────────
+    const isBack = incomingMessage.trim().toLowerCase() === 'back' || incomingMessage.trim().toLowerCase() === 'undo';
+
+    if (isBack) {
+      if (isRegistering) {
+        let prevStatus: ClientBotStatus = 'REGISTERING_NAME';
+        let fieldToClear: Record<string, any> = {};
+
+        if (botStatus === 'REGISTERING_PHONE') {
+          prevStatus = 'REGISTERING_NAME';
+          fieldToClear = { full_name: null };
+        } else if (botStatus === 'REGISTERING_DOB') {
+          prevStatus = 'REGISTERING_PHONE';
+          fieldToClear = { phone_number: null };
+        } else if (botStatus === 'REGISTERING_EMAIL') {
+          prevStatus = 'REGISTERING_DOB';
+          fieldToClear = { date_of_birth: null };
+        } else if (botStatus === 'REGISTERING_PAN') {
+          prevStatus = 'REGISTERING_EMAIL';
+          fieldToClear = { email: null };
+        } else if (botStatus === 'REGISTERING_AADHAAR') {
+          prevStatus = 'REGISTERING_PAN';
+          fieldToClear = { pan_media_url: null };
+        } else {
+          await sendMessage('ℹ️ You are at the first step of registration. Cannot go back further.');
+          return;
+        }
+
+        const { data: updated } = await updateClient(client.id, {
+          bot_status: prevStatus,
+          ...fieldToClear
+        });
+
+        await sendMessage('↩️ *Going back to previous step...*');
+        
+        if (updated) {
+          await handleRegistration(updated, isNewClient, '', false, null, sendMessage);
+        }
+        return;
+      }
+
+      const { fy } = getFinancialAndAssessmentYear();
+      const filing = await getFiling(client.id, fy);
+      if (filing && filing.status !== 'COMPLETED') {
+        const currentFilingStatus = filing.status as ItrStatus;
+        let prevFilingStatus: ItrStatus = 'SERVICE_MENU';
+        let fieldsToClear: Record<string, any> = {};
+
+        if (currentFilingStatus === 'AWAITING_BANK_NAME') {
+          prevFilingStatus = 'SERVICE_MENU';
+        } else if (currentFilingStatus === 'AWAITING_BANK_ACC') {
+          prevFilingStatus = 'AWAITING_BANK_NAME';
+          fieldsToClear = { bank_name: null };
+        } else if (currentFilingStatus === 'AWAITING_BANK_IFSC') {
+          prevFilingStatus = 'AWAITING_BANK_ACC';
+          fieldsToClear = { bank_account_number: null };
+        } else if (currentFilingStatus === 'AWAITING_INCOME_SOURCE') {
+          prevFilingStatus = 'AWAITING_BANK_IFSC';
+          fieldsToClear = { bank_ifsc: null };
+        } else if (
+          currentFilingStatus === 'AWAITING_FORM16' ||
+          currentFilingStatus === 'AWAITING_BANK_STATEMENT' ||
+          currentFilingStatus === 'AWAITING_CAPITAL_GAINS' ||
+          currentFilingStatus === 'AWAITING_PROPERTY_DOCS'
+        ) {
+          prevFilingStatus = 'AWAITING_INCOME_SOURCE';
+          fieldsToClear = {
+            income_source: null,
+            form16_media_url: null,
+            bank_statement_media_url: null,
+            capital_gains_media_url: null,
+            property_docs_media_url: null
+          };
+        } else if (currentFilingStatus === 'AWAITING_PROPERTY_SALE_DECISION') {
+          const source = filing.income_source;
+          if (source === 'SALARIED') {
+            prevFilingStatus = 'AWAITING_FORM16';
+            fieldsToClear = { form16_media_url: null };
+          } else if (source === 'BUSINESS') {
+            prevFilingStatus = 'AWAITING_BANK_STATEMENT';
+            fieldsToClear = { bank_statement_media_url: null };
+          } else if (source === 'INVESTOR') {
+            prevFilingStatus = 'AWAITING_CAPITAL_GAINS';
+            fieldsToClear = { capital_gains_media_url: null };
+          } else {
+            prevFilingStatus = 'AWAITING_INCOME_SOURCE';
+            fieldsToClear = { income_source: null };
+          }
+        } else if (currentFilingStatus === 'AWAITING_OTHER_DOCS_DECISION') {
+          const source = filing.income_source;
+          if (source === 'PROPERTY') {
+            prevFilingStatus = 'AWAITING_PROPERTY_DOCS';
+            fieldsToClear = { property_docs_media_url: null };
+          } else {
+            prevFilingStatus = 'AWAITING_PROPERTY_SALE_DECISION';
+          }
+        } else if (currentFilingStatus === 'AWAITING_OTHER_DOCS') {
+          prevFilingStatus = 'AWAITING_OTHER_DOCS_DECISION';
+          fieldsToClear = { other_docs_media_url: null };
+        } else {
+          await sendMessage('ℹ️ Cannot go back further.');
+          return;
+        }
+
+        const updated = await updateFiling(filing.id, {
+          status: prevFilingStatus,
+          ...fieldsToClear
+        });
+
+        await sendMessage('↩️ *Going back to previous step...*');
+
+        if (updated) {
+          const { ay } = getFinancialAndAssessmentYear();
+          const userName = client.full_name || 'there';
+          await handleItrFlow(client, updated, '', false, null, fy, ay, userName, sendMessage);
+        }
+        return;
+      }
+    }
+
     if (isRegistering) {
       await handleRegistration(client, isNewClient, incomingMessage, isMedia, mediaUrl, sendMessage);
       return;

@@ -2,6 +2,15 @@
 
 All notable changes to the CA-bOt WhatsApp Bot Backend will be documented in this file.
 
+## [1.5.0] - 2026-05-23
+### Added
+- **Conversation Backtracking (`back` / `undo` commands)**:
+  - Added a universal backtrack handler in `whatsapp.controller.ts`.
+  - Captures `back` or `undo` case-insensitive commands.
+  - Automatically nulls/clears the previously entered column in the database (safeguarding database integrity).
+  - Transitions client registration state (`bot_status`) or filing status back to the preceding step.
+  - Promptly re-triggers the correct query message for that step, giving users an intuitive way to correct errors in real-time.
+
 ## [1.4.0] - 2026-05-23
 ### Changed
 - **Provider-Based Messaging Architecture**:
