@@ -665,11 +665,27 @@ const handleItrFlow = async (
 
     // ── COMPLETED ──────────────────────────────────────────────────
     case 'COMPLETED': {
-      await sendMessage(
-        `Dear *${userName}*, your ITR documents for *FY ${filing.fy_year}* have already been submitted and are under review. 📊\n\n` +
-        `For changes or queries, contact us at ${SUPPORT_PHONE}.\n\n` +
-        `Thank you for choosing *${COMPANY_NAME}*! 🙏`
-      );
+      if (filing.filing_status === 'FILED') {
+        await sendMessage(
+          `Dear *${userName}*, your ITR for *FY ${filing.fy_year}* has already been successfully filed! 🎉✅\n\n` +
+          `Your signed ITR-V acknowledgment receipt has been successfully uploaded and sent to you on WhatsApp. You can download and view it anytime from the conversation history above.\n\n` +
+          `For any future modifications, changes, or queries, please feel free to reach out to us at ${SUPPORT_PHONE}.\n\n` +
+          `Thank you for choosing *${COMPANY_NAME}*! 🙏`
+        );
+      } else if (filing.filing_status === 'DOCS_VERIFIED') {
+        await sendMessage(
+          `Dear *${userName}*, your ITR documents for *FY ${filing.fy_year}* have been verified! 📑\n\n` +
+          `Our CA team is currently preparing and uploading your tax return. We will notify you here with your signed ITR-V receipt as soon as it is filed.\n\n` +
+          `For urgent queries, reach out to us at ${SUPPORT_PHONE}.\n\n` +
+          `Thank you for choosing *${COMPANY_NAME}*! 🙏`
+        );
+      } else {
+        await sendMessage(
+          `Dear *${userName}*, your ITR documents for *FY ${filing.fy_year}* have already been submitted and are under review. 📊\n\n` +
+          `For changes or queries, contact us at ${SUPPORT_PHONE}.\n\n` +
+          `Thank you for choosing *${COMPANY_NAME}*! 🙏`
+        );
+      }
       break;
     }
 
