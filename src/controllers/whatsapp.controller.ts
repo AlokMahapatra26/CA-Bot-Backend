@@ -203,6 +203,64 @@ export const handleBaileysMessage = async (sock: WASocket, msg: proto.IWebMessag
 // (Name → Phone → DOB → Email → PAN Card → Aadhaar → PENDING)
 // ─────────────────────────────────────────────────────────────────
 
+const routeToNextOnboardingStep = async (
+  updatedClient: any,
+  sendMessage: (text: string) => Promise<void>
+) => {
+  const name = updatedClient.full_name || 'there';
+  const isApproved = updatedClient.account_status === 'APPROVED';
+
+  if (!updatedClient.date_of_birth) {
+    await updateClient(updatedClient.id, { bot_status: 'REGISTERING_DOB' });
+    await sendMessage(
+      `*(Step 2/5)*\nWhat is your *Date of Birth*? Reply in *DD-MM-YYYY* format (e.g., 15-08-1995).`
+    );
+  } else if (!updatedClient.email) {
+    await updateClient(updatedClient.id, { bot_status: 'REGISTERING_EMAIL' });
+    await sendMessage(
+      `*(Step 3/5)*\nWhat is your *Email Address*? (e.g., name@gmail.com)`
+    );
+  } else if (!updatedClient.pan_media_url) {
+    await updateClient(updatedClient.id, { bot_status: 'REGISTERING_PAN' });
+    await sendMessage(
+      `*(Step 4/5)*\nNow I need your *PAN Card* for KYC verification.\n\n` +
+      `Please upload a clear photo or PDF of your *PAN Card* 📎`
+    );
+  } else if (!updatedClient.aadhaar_media_url) {
+    await updateClient(updatedClient.id, { bot_status: 'REGISTERING_AADHAAR' });
+    await sendMessage(
+      `*(Step 5/5)*\nAlmost done! Please now upload your *Aadhaar Card* 📎`
+    );
+  } else {
+    // Both PAN and Aadhaar are uploaded!
+    await updateClient(updatedClient.id, {
+      bot_status: isApproved ? 'REGISTERED' : 'PENDING_APPROVAL'
+    });
+
+    if (isApproved) {
+      const { fy } = getFinancialAndAssessmentYear();
+      await sendMessage(
+        `🎉 *Registration Complete, ${name}!* Your account is verified and ready. 👋\n\n` +
+        `🛎️ *What service do you need today?*\n\n` +
+        `Please reply with the number:\n` +
+        `*1* — 📊 ITR Filing (Income Tax Return) for FY ${fy}\n\n` +
+        `_More services coming soon!_`
+      );
+    } else {
+      await sendMessage(
+        `🎉 *Registration Complete, ${name}!*\n\n` +
+        `Your account is now *under review* by our CA team. Here's what we have:\n\n` +
+        `• 📝 *Name:* ${name}\n` +
+        `• 📄 *PAN Card:* Submitted ✅\n` +
+        `• 🪪 *Aadhaar Card:* Submitted ✅\n\n` +
+        `⏳ Our team will verify your documents and *approve your account within 1–2 business days*.\n\n` +
+        `You will be able to access our services (ITR Filing, etc.) once approved.\n\n` +
+        `For urgent queries, contact: ${SUPPORT_PHONE}`
+      );
+    }
+  }
+};
+
 const handleRegistration = async (
   client: any,
   isNewClient: boolean,
@@ -263,7 +321,51 @@ const handleRegistration = async (
       }
 
       const fullNumber = cleaned.length === 10 ? `91${cleaned}` : cleaned;
-      const { data: updated, error } = await updateClient(client.id, { phone_number: fullNumber, bot_status: 'REGISTERING_DOB' });
+
+      // Check if a client with this phone number already exists
+      const { data: existingClient } = await supabase!
+        .from('clients')
+        .select('*')
+        .eq('phone_number', fullNumber)
+        .maybeSingle();
+
+      if (existingClient) {
+        console.log(`[Identity Link] Merging temporary registration JID "${client.whatsapp_jid}" into existing client ID "${existingClient.id}"`);
+
+        // 1. Delete the temporary client record first to release the unique whatsapp_jid constraint
+        const { error: delErr } = await supabase!
+          .from('clients')
+          .delete()
+          .eq('id', client.id);
+
+        if (delErr) {
+          console.error('[Identity Link] Error deleting temporary registration client:', delErr);
+        }
+
+        // 2. Update existing client to link their active WhatsApp JID (which is now free!)
+        const { error: linkErr } = await supabase!
+          .from('clients')
+          .update({
+            whatsapp_jid: client.whatsapp_jid,
+            full_name: existingClient.full_name || client.full_name || 'Anonymous'
+          })
+          .eq('id', existingClient.id);
+
+        if (linkErr) {
+          console.error('[Identity Link] Error linking JID to existing client:', linkErr);
+          await sendMessage('⚠️ There was an error matching your number. Please try again.');
+          return;
+        }
+
+        // 3. Continue onboarding session with the linked pre-existing client record
+        console.log(`[Identity Link] Linked client routing to next onboarding step...`);
+        await sendMessage(`✅ Hello, *${existingClient.full_name || client.full_name}*! I've successfully verified and linked your WhatsApp to your registered profile. 😊`);
+        await routeToNextOnboardingStep(existingClient, sendMessage);
+        return;
+      }
+
+      // If they are not already registered, perform the regular signup flow:
+      const { data: updated, error } = await updateClient(client.id, { phone_number: fullNumber });
 
       if (error?.code === '23505') {
         await sendMessage(`⚠️ This phone number is already registered. Please provide a different number or contact ${SUPPORT_PHONE}.`);
@@ -275,10 +377,8 @@ const handleRegistration = async (
       }
 
       console.log(`✅ Phone "${fullNumber}" saved for client ${client.id}`);
-      await sendMessage(
-        `✅ Mobile number saved!\n\n` +
-        `*(Step 2/5)*\nWhat is your *Date of Birth*? Reply in *DD-MM-YYYY* format (e.g., 15-08-1995).`
-      );
+      await sendMessage(`✅ Mobile number saved!`);
+      await routeToNextOnboardingStep(updated, sendMessage);
       break;
     }
 
@@ -306,11 +406,13 @@ const handleRegistration = async (
         return;
       }
 
-      await updateClient(client.id, { date_of_birth: `${yyyy}-${mm}-${dd}`, bot_status: 'REGISTERING_EMAIL' });
-      await sendMessage(
-        `✅ Date of birth saved!\n\n` +
-        `*(Step 3/5)*\nWhat is your *Email Address*? (e.g., name@gmail.com)`
-      );
+      const { data: updated } = await updateClient(client.id, { date_of_birth: `${yyyy}-${mm}-${dd}` });
+      if (!updated) {
+        await sendMessage('⚠️ Error saving your Date of Birth. Please try again.');
+        return;
+      }
+      await sendMessage(`✅ Date of birth saved!`);
+      await routeToNextOnboardingStep(updated, sendMessage);
       break;
     }
 
@@ -326,23 +428,26 @@ const handleRegistration = async (
         return;
       }
 
-      await updateClient(client.id, { email: incomingMessage.toLowerCase(), bot_status: 'REGISTERING_PAN' });
-      await sendMessage(
-        `✅ Email saved!\n\n` +
-        `*(Step 4/5)*\nNow I need your *PAN Card* for KYC verification.\n\n` +
-        `Please upload a clear photo or PDF of your *PAN Card* 📎`
-      );
+      const { data: updated } = await updateClient(client.id, { email: incomingMessage.toLowerCase() });
+      if (!updated) {
+        await sendMessage('⚠️ Error saving your Email Address. Please try again.');
+        return;
+      }
+      await sendMessage(`✅ Email saved!`);
+      await routeToNextOnboardingStep(updated, sendMessage);
       break;
     }
 
     // ── STEP 5a: Collect PAN Card ─────────────────────────────────
     case 'REGISTERING_PAN': {
       if (mediaUrl) {
-        await updateClient(client.id, { pan_media_url: mediaUrl, bot_status: 'REGISTERING_AADHAAR' });
-        await sendMessage(
-          `✅ *PAN Card received!*\n\n` +
-          `*(Step 5/5)*\nAlmost done! Please now upload your *Aadhaar Card* 📎`
-        );
+        const { data: updated } = await updateClient(client.id, { pan_media_url: mediaUrl });
+        if (!updated) {
+          await sendMessage('⚠️ Error saving your PAN Card. Please try again.');
+          return;
+        }
+        await sendMessage(`✅ *PAN Card received!*`);
+        await routeToNextOnboardingStep(updated, sendMessage);
       } else {
         await sendMessage(
           `⚠️ Please upload your *PAN Card* as an image or PDF.\n\n` +
@@ -355,25 +460,13 @@ const handleRegistration = async (
     // ── STEP 5b: Collect Aadhaar Card ─────────────────────────────
     case 'REGISTERING_AADHAAR': {
       if (mediaUrl) {
-        const name = client.full_name || 'there';
-        await updateClient(client.id, {
-          aadhaar_media_url: mediaUrl,
-          bot_status: 'PENDING_APPROVAL',
-          // account_status remains 'PENDING' — CA must approve from dashboard
-        });
-
-        await sendMessage(
-          `✅ *Aadhaar Card received!*\n\n` +
-          `━━━━━━━━━━━━━━━━━━━━━\n\n` +
-          `🎉 *Registration Complete, ${name}!*\n\n` +
-          `Your account is now *under review* by our CA team. Here's what we have:\n\n` +
-          `• 📝 *Name:* ${name}\n` +
-          `• 📄 *PAN Card:* Submitted ✅\n` +
-          `• 🪪 *Aadhaar Card:* Submitted ✅\n\n` +
-          `⏳ Our team will verify your documents and *approve your account within 1–2 business days*.\n\n` +
-          `You will be able to access our services (ITR Filing, etc.) once approved.\n\n` +
-          `For urgent queries, contact: ${SUPPORT_PHONE}`
-        );
+        const { data: updated } = await updateClient(client.id, { aadhaar_media_url: mediaUrl });
+        if (!updated) {
+          await sendMessage('⚠️ Error saving your Aadhaar Card. Please try again.');
+          return;
+        }
+        await sendMessage(`✅ *Aadhaar Card received!*`);
+        await routeToNextOnboardingStep(updated, sendMessage);
       } else {
         await sendMessage(
           `⚠️ Please upload your *Aadhaar Card* as an image or PDF to complete your registration.\n\n` +
