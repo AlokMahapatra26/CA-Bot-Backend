@@ -2,6 +2,13 @@
 
 All notable changes to the CA-bOt WhatsApp Bot Backend will be documented in this file.
 
+## [1.3.1] - 2026-05-23
+### Changed
+- **Dynamic Onboarding Step Routing**:
+  - Refactored registration flow into a centralized `routeToNextOnboardingStep` dispatcher that checks each field (DOB, email, PAN, Aadhaar) dynamically against the database before prompting.
+  - Clients whose documents were uploaded via the admin UI are seamlessly skipped during WhatsApp onboarding.
+  - Fixed duplicate JID constraint error (`23505`) by deleting the temporary client record before linking the pre-registered one.
+
 ## [1.3.0] - 2026-05-23
 ### Added
 - **Automatic Identity Merging & JID Linking**:
