@@ -639,7 +639,9 @@ const handleItrFlow = async (
     // ── OTHER DOCUMENTS UPLOAD LOOP ─────────────────────────────────
     case 'AWAITING_OTHER_DOCS': {
       if (mediaUrl) {
-        await updateFiling(filing.id, { other_docs_media_url: mediaUrl });
+        const existingDocs = filing.other_docs_media_url;
+        const newDocs = existingDocs ? `${existingDocs},${mediaUrl}` : mediaUrl;
+        await updateFiling(filing.id, { other_docs_media_url: newDocs });
         await sendMessage(
           `✅ *Document received successfully!*\n\n` +
           `If you have **more supporting documents** to send (such as rent agreements or insurance receipts), please upload them now.\n\n` +
