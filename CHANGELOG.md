@@ -2,6 +2,14 @@
 
 All notable changes to the CA-bOt WhatsApp Bot Backend will be documented in this file.
 
+## [1.6.0] - 2026-05-26
+### Added
+- **Automated WhatsApp Document Reminder Scheduler**:
+  - Implemented persistent background scheduler service `reminder.service.ts` linked to JSON file-system storage (`reminder-settings.json`).
+  - Automatically checks active ITR filings with pending document requirements (`AWAITING_FORM16`, `AWAITING_BANK_STATEMENT`, etc.).
+  - Builds and dispatches tailored, friendly reminder messages sequentially using `messageService`.
+  - Added REST API routes `/api/reminders/status`, `/api/reminders/toggle`, and `/api/reminders/trigger` to give the client web dashboard complete administrative control.
+
 ## [1.5.0] - 2026-05-23
 ### Added
 - **Conversation Backtracking (`back` / `undo` commands)**:

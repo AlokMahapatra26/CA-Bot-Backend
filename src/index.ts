@@ -2,6 +2,8 @@ import express from 'express';
 import { config } from './config/env';
 import { messageService } from './providers';
 import { handleIncomingMessage } from './controllers/whatsapp.controller';
+import { supabase } from './services/supabase.service';
+import { reminderService } from './services/reminder.service';
 
 const app = express();
 app.use(express.json());
@@ -69,7 +71,104 @@ app.post('/api/send-message', async (req, res) => {
   }
 });
 
+// ── Broadcast message to all registered clients ─────────────────────────────────
+app.post('/api/broadcast-message', async (req, res) => {
+  const { text } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ error: 'Missing text parameter' });
+  }
+
+  const { connected } = messageService.getStatus();
+  if (!connected) {
+    return res.status(503).json({ error: 'WhatsApp connection is not active' });
+  }
+
+  if (!supabase) {
+    return res.status(503).json({ error: 'Database service is not active' });
+  }
+
+  try {
+    // 1. Fetch all clients who have a WhatsApp JID
+    const { data: clients, error } = await supabase
+      .from('clients')
+      .select('whatsapp_jid')
+      .not('whatsapp_jid', 'is', null);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!clients || clients.length === 0) {
+      return res.json({ success: true, count: 0, message: 'No clients to broadcast' });
+    }
+
+    // 2. Loop through clients and send message
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const client of clients) {
+      if (client.whatsapp_jid) {
+        try {
+          await messageService.sendText(client.whatsapp_jid, text);
+          successCount++;
+        } catch (err) {
+          console.error(`Failed to send broadcast to ${client.whatsapp_jid}:`, err);
+          failCount++;
+        }
+      }
+    }
+
+    console.log(`Broadcast completed: sent to ${successCount} successfully, failed for ${failCount}`);
+    return res.json({ success: true, count: successCount, failed: failCount });
+  } catch (error: any) {
+    console.error('Failed to broadcast message:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// ── Document Reminder System routes ──────────────────────────────────────────
+app.get('/api/reminders/status', async (req, res) => {
+  try {
+    const status = reminderService.getSettings();
+    const activeClients = await reminderService.dryRun();
+    return res.json({ success: true, ...status, activeClients });
+  } catch (error: any) {
+    console.error('Failed to fetch reminder status:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/reminders/toggle', async (req, res) => {
+  const { enabled, intervalHours, isTesting } = req.body;
+
+  if (typeof enabled !== 'boolean' || typeof intervalHours !== 'number') {
+    return res.status(400).json({ error: 'Missing enabled (boolean) or intervalHours (number) parameters' });
+  }
+
+  try {
+    const status = await reminderService.toggle(enabled, intervalHours, isTesting);
+    const activeClients = await reminderService.dryRun();
+    return res.json({ success: true, ...status, activeClients });
+  } catch (error: any) {
+    console.error('Failed to toggle reminder scheduler:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/reminders/trigger', async (req, res) => {
+  try {
+    const result = await reminderService.triggerReminders();
+    const status = reminderService.getSettings();
+    return res.json({ ...result, ...status });
+  } catch (error: any) {
+    console.error('Failed to manually trigger reminders:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
 app.listen(config.PORT, async () => {
   console.log(`Server is running on port ${config.PORT}`);
   await messageService.initialize(handleIncomingMessage);
+  await reminderService.initialize();
 });
