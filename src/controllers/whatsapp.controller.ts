@@ -118,7 +118,7 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         });
 
         await sendMessage('↩️ *Going back to previous step...*');
-        
+
         if (updated) {
           await handleRegistration(updated, isNewClient, '', false, null, sendMessage);
         }
@@ -254,16 +254,18 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
           `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
           `Great, *${client.full_name}*! Let's get your Income Tax Return filed.\n\n` +
           `I'll need your *bank account details* for your tax refund.\n\n` +
-          `*Step 1/4:* What is the *Name of your Bank*? (e.g., HDFC Bank, SBI, ICICI Bank)`
+          `*Step 1/4:* What is the *Name of your Bank*? (e.g., HDFC Bank, SBI, ICICI Bank)\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else {
         // They haven't selected option 1 yet, show the service menu.
         await sendMessage(
           `Welcome back, *${client.full_name}*! 👋\n\n` +
           `🛎️ *What service do you need today?*\n\n` +
-          `Please reply with the number:\n` +
+          `👉 *Please type the number to select your option:*\n` +
           `*1* — 📊 ITR Filing (Income Tax Return) for FY ${fy}\n\n` +
-          `_More services coming soon!_`
+          `_More services coming soon!_\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       }
       return;
@@ -304,23 +306,27 @@ const routeToNextOnboardingStep = async (
   if (!updatedClient.date_of_birth) {
     await updateClient(updatedClient.id, { bot_status: 'REGISTERING_DOB' });
     await sendMessage(
-      `*(Step 2/5)*\nWhat is your *Date of Birth*? Reply in *DD-MM-YYYY* format (e.g., 15-08-1995).`
+      `*(Step 2/5)*\nWhat is your *Date of Birth*? Reply in *DD-MM-YYYY* format (e.g., 15-08-1995).\n\n` +
+      `💡 You can type *back* at any step to go to the previous question.`
     );
   } else if (!updatedClient.email) {
     await updateClient(updatedClient.id, { bot_status: 'REGISTERING_EMAIL' });
     await sendMessage(
-      `*(Step 3/5)*\nWhat is your *Email Address*? (e.g., name@gmail.com)`
+      `*(Step 3/5)*\nWhat is your *Email Address*? (e.g., name@gmail.com)\n\n` +
+      `💡 You can type *back* at any step to go to the previous question.`
     );
   } else if (!updatedClient.pan_media_url) {
     await updateClient(updatedClient.id, { bot_status: 'REGISTERING_PAN' });
     await sendMessage(
       `*(Step 4/5)*\nNow I need your *PAN Card* for KYC verification.\n\n` +
-      `Please upload a clear photo or PDF of your *PAN Card* 📎`
+      `Please upload a clear photo or PDF of your *PAN Card* 📎\n\n` +
+      `💡 You can type *back* at any step to go to the previous question.`
     );
   } else if (!updatedClient.aadhaar_media_url) {
     await updateClient(updatedClient.id, { bot_status: 'REGISTERING_AADHAAR' });
     await sendMessage(
-      `*(Step 5/5)*\nAlmost done! Please now upload your *Aadhaar Card* 📎`
+      `*(Step 5/5)*\nAlmost done! Please now upload your *Aadhaar Card* 📎\n\n` +
+      `💡 You can type *back* at any step to go to the previous question.`
     );
   } else {
     // Both PAN and Aadhaar are uploaded!
@@ -333,9 +339,10 @@ const routeToNextOnboardingStep = async (
       await sendMessage(
         `🎉 *Registration Complete, ${name}!* Your account is verified and ready. 👋\n\n` +
         `🛎️ *What service do you need today?*\n\n` +
-        `Please reply with the number:\n` +
+        `👉 *Please type the number to select your option:*\n` +
         `*1* — 📊 ITR Filing (Income Tax Return) for FY ${fy}\n\n` +
-        `_More services coming soon!_`
+        `_More services coming soon!_\n\n` +
+        `💡 You can type *back* at any step to go to the previous question.`
       );
     } else {
       await sendMessage(
@@ -390,7 +397,8 @@ const handleRegistration = async (
 
       await sendMessage(
         `Nice to meet you, *${formattedName}*! 😊\n\n` +
-        `*(Step 1/5)*\nPlease reply with your *10-digit mobile number* (e.g., 9876543210).`
+        `*(Step 1/5)*\nPlease reply with your *10-digit whatsapp number currently you are using in this phone* (e.g., 9876543210).\n\n` +
+        `💡 You can type *back* at any step to go to the previous question.`
       );
       break;
     }
@@ -600,13 +608,16 @@ const handleItrFlow = async (
           `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
           `Great, *${userName}*! Let's get your Income Tax Return filed.\n\n` +
           `I'll need your *bank account details* for your tax refund.\n\n` +
-          `*Step 1/4:* What is the *Name of your Bank*? (e.g., HDFC Bank, SBI, ICICI Bank)`
+          `*Step 1/4:* What is the *Name of your Bank*? (e.g., HDFC Bank, SBI, ICICI Bank)\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else {
         await sendMessage(
-          `Please reply with a valid option:\n\n` +
+          `🛎️ *What service do you need today?*\n\n` +
+          `👉 *Please reply with the number to select (e.g., 1):*\n\n` +
           `*1* — 📊 ITR Filing (Income Tax Return)\n\n` +
-          `_More services coming soon!_`
+          `_More services coming soon!_\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       }
       break;
@@ -619,7 +630,7 @@ const handleItrFlow = async (
         return;
       }
       await updateFiling(filing.id, { bank_name: incomingMessage, status: 'AWAITING_BANK_ACC' });
-      await sendMessage(`✅ Bank: *${incomingMessage}*\n\n*Step 2/4:* Please reply with your *Bank Account Number*.`);
+      await sendMessage(`✅ Bank: *${incomingMessage}*\n\n*Step 2/4:* Please reply with your *Bank Account Number*.\n\n💡 You can type *back* at any step to go to the previous question.`);
       break;
     }
 
@@ -635,7 +646,7 @@ const handleItrFlow = async (
         return;
       }
       await updateFiling(filing.id, { bank_account_number: acc, status: 'AWAITING_BANK_IFSC' });
-      await sendMessage(`✅ Account number saved!\n\n*Step 3/4:* Please reply with your bank's *IFSC Code* (e.g., HDFC0001234).`);
+      await sendMessage(`✅ Account number saved!\n\n*Step 3/4:* Please reply with your bank's *IFSC Code* (e.g., HDFC0001234).\n\n💡 You can type *back* at any step to go to the previous question.`);
       break;
     }
 
@@ -659,7 +670,8 @@ const handleItrFlow = async (
         `*2* — 💼 Self-Employed / Business / Freelancer\n` +
         `*3* — 📈 Investor / Trader (Stocks, Mutual Funds, Crypto)\n` +
         `*4* — 🏠 Property Seller / Landlord (Real Estate transactions)\n\n` +
-        `_Reply with a number (1-4)._`
+        `👉 *Please type a number (1, 2, 3, or 4) to select your option.*\n\n` +
+        `💡 You can type *back* at any step to go to the previous question.`
       );
       break;
     }
@@ -671,33 +683,39 @@ const handleItrFlow = async (
         await updateFiling(filing.id, { income_source: 'SALARIED', status: 'AWAITING_FORM16' });
         await sendMessage(
           `👔 *Salaried Income Details*\n\n` +
-          `Please upload your **Form 16** (issued by your employer) as a PDF or clear photo 📎`
+          `Please upload your **Form 16** (issued by your employer) as a PDF or clear photo 📎\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else if (choice === '2') {
         await updateFiling(filing.id, { income_source: 'BUSINESS', status: 'AWAITING_BANK_STATEMENT' });
         await sendMessage(
           `💼 *Business / Freelance Details*\n\n` +
-          `Please upload your **Bank Statement** for FY ${fy} (PDF or photo) 📎`
+          `Please upload your **Bank Statement** for FY ${fy} (PDF or photo) 📎\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else if (choice === '3') {
         await updateFiling(filing.id, { income_source: 'INVESTOR', status: 'AWAITING_CAPITAL_GAINS' });
         await sendMessage(
           `📈 *Investment & Trading Details*\n\n` +
-          `Please upload your broker's **Capital Gains Statement** or Tax Report (PDF or photo) 📎`
+          `Please upload your broker's **Capital Gains Statement** or Tax Report (PDF or photo) 📎\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else if (choice === '4') {
         await updateFiling(filing.id, { income_source: 'PROPERTY', status: 'AWAITING_PROPERTY_DOCS' });
         await sendMessage(
           `🏠 *Property Transaction Details*\n\n` +
-          `Please upload your **Property Sale/Purchase Deeds** or registration documents (PDF or photo) 📎`
+          `Please upload your **Property Sale/Purchase Deeds** or registration documents (PDF or photo) 📎\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else {
         await sendMessage(
-          `⚠️ Invalid selection. Please reply with a number between 1 and 4:\n\n` +
+          `⚠️ Invalid selection. Please reply with a number between 1 and 4 to select your option:\n\n` +
           `*1* — 👔 Salaried\n` +
           `*2* — 💼 Self-Employed / Business\n` +
           `*3* — 📈 Investor / Trader\n` +
-          `*4* — 🏠 Property transactions`
+          `*4* — 🏠 Property transactions\n\n` +
+          `👉 *Please type a number (1, 2, 3, or 4) to select.*\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       }
       break;
@@ -711,7 +729,9 @@ const handleItrFlow = async (
           `✅ *Form 16 received!*\n\n` +
           `Did you buy or sell any real estate property (house, plot, land) during this financial year?\n\n` +
           `*1* — 🏠 Yes\n` +
-          `*2* — ❌ No`
+          `*2* — ❌ No\n\n` +
+          `👉 *Please type a number (1 or 2) to select your option.*\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else {
         await sendMessage(`⚠️ Please attach your **Form 16** to continue, *${userName}*.`);
@@ -727,7 +747,9 @@ const handleItrFlow = async (
           `✅ *Bank Statement received!*\n\n` +
           `Did you buy or sell any real estate property (house, plot, land) during this financial year?\n\n` +
           `*1* — 🏠 Yes\n` +
-          `*2* — ❌ No`
+          `*2* — ❌ No\n\n` +
+          `👉 *Please type a number (1 or 2) to select your option.*\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else {
         await sendMessage(`⚠️ Please attach your **Bank Statement** to continue, *${userName}*.`);
@@ -743,7 +765,9 @@ const handleItrFlow = async (
           `✅ *Capital Gains Statement received!*\n\n` +
           `Did you buy or sell any real estate property (house, plot, land) during this financial year?\n\n` +
           `*1* — 🏠 Yes\n` +
-          `*2* — ❌ No`
+          `*2* — ❌ No\n\n` +
+          `👉 *Please type a number (1 or 2) to select your option.*\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else {
         await sendMessage(`⚠️ Please attach your **Capital Gains Statement** to continue, *${userName}*.`);
@@ -759,7 +783,9 @@ const handleItrFlow = async (
           `✅ *Property documents received!*\n\n` +
           `Do you have any other supporting tax documents (like rent agreements, insurance premium receipts, or dividend statements) to share?\n\n` +
           `*1* — 📎 Yes, upload other documents\n` +
-          `*2* — ❌ No, I am done`
+          `*2* — ❌ No, I am done\n\n` +
+          `👉 *Please type a number (1 or 2) to select your option.*\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else {
         await sendMessage(`⚠️ Please attach your **Property Sale/Purchase Deeds** or documents to continue, *${userName}*.`);
@@ -774,20 +800,25 @@ const handleItrFlow = async (
         await updateFiling(filing.id, { status: 'AWAITING_PROPERTY_DOCS' });
         await sendMessage(
           `🏠 *Property Transaction Details*\n\n` +
-          `Please upload your **Property Sale/Purchase Deeds** or registration documents (PDF or photo) 📎`
+          `Please upload your **Property Sale/Purchase Deeds** or registration documents (PDF or photo) 📎\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else if (choice === '2') {
         await updateFiling(filing.id, { status: 'AWAITING_OTHER_DOCS_DECISION' });
         await sendMessage(
           `Do you have any other supporting tax documents (like rent agreements, insurance premium receipts, or dividend statements) to share?\n\n` +
           `*1* — 📎 Yes, upload other documents\n` +
-          `*2* — ❌ No, I am done`
+          `*2* — ❌ No, I am done\n\n` +
+          `👉 *Please type a number (1 or 2) to select your option.*\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else {
         await sendMessage(
           `⚠️ Invalid selection. Did you buy or sell any real estate property during this financial year?\n\n` +
           `*1* — 🏠 Yes\n` +
-          `*2* — ❌ No`
+          `*2* — ❌ No\n\n` +
+          `👉 *Please type a number (1 or 2) to select your option.*\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       }
       break;
@@ -800,7 +831,8 @@ const handleItrFlow = async (
         await updateFiling(filing.id, { status: 'AWAITING_OTHER_DOCS' });
         await sendMessage(
           `📎 *Other Supporting Documents*\n\n` +
-          `Please upload your other tax files (PDF or Photo). Once uploaded, you can send more or submit! 📎`
+          `Please upload your other tax files (PDF or Photo). Once uploaded, you can send more or submit! 📎\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       } else if (choice === '2') {
         await updateFiling(filing.id, { status: 'COMPLETED' });
@@ -814,7 +846,9 @@ const handleItrFlow = async (
         await sendMessage(
           `⚠️ Invalid selection. Do you have any other supporting tax documents to share?\n\n` +
           `*1* — 📎 Yes, upload other documents\n` +
-          `*2* — ❌ No, I am done`
+          `*2* — ❌ No, I am done\n\n` +
+          `👉 *Please type a number (1 or 2) to select your option.*\n\n` +
+          `💡 You can type *back* at any step to go to the previous question.`
         );
       }
       break;
