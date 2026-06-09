@@ -193,7 +193,9 @@ export class BaileysProvider implements IWhatsAppProvider {
 
       if (messageContent.imageMessage) {
         mimetype = messageContent.imageMessage.mimetype || 'image/jpeg';
-        extension = mimetype.split('/')[1] || 'jpg';
+        // Normalize iPhone HEIC/HEIF to a known extension
+        const imgExt = mimetype.split('/')[1] || 'jpg';
+        extension = (imgExt === 'heif' || imgExt === 'heic') ? 'heic' : imgExt;
       } else if (messageContent.documentMessage) {
         mimetype = messageContent.documentMessage.mimetype || 'application/pdf';
         extension = messageContent.documentMessage.fileName?.split('.').pop() || 'pdf';
