@@ -2,6 +2,14 @@
 
 All notable changes to the CA-bOt WhatsApp Bot Backend will be documented in this file.
 
+## [1.7.0] - 2026-06-12
+### Added
+- **Auto-Resume Incomplete ITR Filings**:
+  - Updated `routeToNextOnboardingStep` inside `whatsapp.controller.ts` to query active filing records for returning approved clients.
+  - Automatically welcomes them back and resumes their ITR filing at their last incomplete step (instead of redirecting to the primary service selection menu).
+- **Service Menu Interaction Guidance**:
+  - Appended clear, explicit instructions to primary WhatsApp service menus (e.g. `"Reply *1* to select."`) to prevent user navigation confusion.
+
 ## [1.6.0] - 2026-05-26
 ### Added
 - **Automated WhatsApp Document Reminder Scheduler**:

@@ -270,6 +270,7 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         await sendMessage(
           `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
           `*1* — 📊 ITR Filing for FY ${fy}\n\n` +
+          `Reply *1* to select.\n\n` +
           `_More services coming soon!_`
         );
       }
@@ -336,12 +337,19 @@ const routeToNextOnboardingStep = async (
     });
 
     if (isApproved) {
-      const { fy } = getFinancialAndAssessmentYear();
-      await sendMessage(
-        `🎉 *Registration Complete!*\n\n` +
-        `*1* — 📊 ITR Filing for FY ${fy}\n\n` +
-        `_More services coming soon!_`
-      );
+      const { fy, ay } = getFinancialAndAssessmentYear();
+      const filing = await getFiling(updatedClient.id, fy);
+      if (filing && filing.status !== 'SERVICE_MENU' && filing.status !== 'COMPLETED') {
+        await sendMessage(`👋 Welcome back, *${name}*! Resuming your ITR filing for *FY ${fy}*:`);
+        await handleItrFlow(updatedClient, filing, '', false, null, fy, ay, name, sendMessage);
+      } else {
+        await sendMessage(
+          `🎉 *Registration Complete!*\n\n` +
+          `*1* — 📊 ITR Filing for FY ${fy}\n\n` +
+          `Reply *1* to select.\n\n` +
+          `_More services coming soon!_`
+        );
+      }
     } else {
       await sendMessage(
         `🎉 *Registration Complete, ${name}!*\n\n` +
