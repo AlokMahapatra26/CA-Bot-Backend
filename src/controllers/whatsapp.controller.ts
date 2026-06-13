@@ -37,6 +37,11 @@ const isGreeting = (text: string): boolean => {
 // Per-JID lock to prevent race conditions from concurrent message deliveries
 const processingLocks = new Map<string, Promise<void>>();
 
+// Session timeout tracking & Menu Override
+const lastInteractionTimestamps = new Map<string, number>();
+const sessionMenuOverride = new Set<string>();
+const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
+
 // ─────────────────────────────────────────────────────────────────
 // MAIN HANDLER (Provider-Agnostic)
 // ─────────────────────────────────────────────────────────────────
@@ -293,8 +298,49 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
     const filing = await getFiling(client.id, fy);
     const dsc = await getDscApplication(client.id);
 
+    // ── SESSION TIMEOUT & MENU KEYWORD HANDLER ────────────────────────
+    const now = Date.now();
+    const lastInteraction = lastInteractionTimestamps.get(senderJid);
+    let sessionTimedOut = false;
+    if (lastInteraction && (now - lastInteraction) > SESSION_TIMEOUT_MS) {
+      sessionTimedOut = true;
+    }
+    lastInteractionTimestamps.set(senderJid, now);
+
+    const isMenuKeyword = ['menu', 'main menu', 'exit', 'quit'].includes(incomingMessage.trim().toLowerCase());
+
+    if (isMenuKeyword) {
+      sessionMenuOverride.add(senderJid);
+      await sendMessage(
+        `👋 Hi *${client.full_name || 'there'}*! What service do you need?\n\n` +
+        `*1* — 📊 ITR Filing for FY ${fy}\n` +
+        `*2* — 🔑 DSC Application\n\n` +
+        `Reply with the service number (1 or 2).`
+      );
+      return;
+    }
+
+    if (sessionTimedOut) {
+      const hasActiveFlow = 
+        (dsc && dsc.status !== 'COMPLETED') ||
+        (filing && filing.status !== 'SERVICE_MENU' && filing.status !== 'COMPLETED');
+        
+      if (hasActiveFlow) {
+        sessionMenuOverride.add(senderJid);
+        await sendMessage(
+          `⏳ *Session Timeout*\n\n` +
+          `Your session has timed out due to 5 minutes of inactivity. Returning to the Main Menu...\n\n` +
+          `👋 Hi *${client.full_name || 'there'}*! What service do you need?\n\n` +
+          `*1* — 📊 ITR Filing for FY ${fy}\n` +
+          `*2* — 🔑 DSC Application\n\n` +
+          `Reply with the service number (1 or 2).`
+        );
+        return;
+      }
+    }
+
     // Route to active DSC flow if in progress
-    if (dsc && dsc.status !== 'COMPLETED') {
+    if (dsc && dsc.status !== 'COMPLETED' && !sessionMenuOverride.has(senderJid)) {
       if (isGreeting(incomingMessage)) {
         await sendMessage(`👋 Welcome back, *${client.full_name}*! Resuming your DSC Application:`);
         await handleDscFlow(client, dsc, '', sendMessage);
@@ -305,7 +351,7 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
     }
 
     // Route to active ITR flow if in progress
-    if (filing && filing.status !== 'SERVICE_MENU' && filing.status !== 'COMPLETED') {
+    if (filing && filing.status !== 'SERVICE_MENU' && filing.status !== 'COMPLETED' && !sessionMenuOverride.has(senderJid)) {
       const userName = client.full_name || 'there';
       if (isGreeting(incomingMessage)) {
         await sendMessage(`👋 Welcome back, *${client.full_name}*! Resuming your ITR filing for *FY ${fy}*:`);
@@ -319,6 +365,7 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
     // Otherwise, they are on the Service Selection Menu
     const choice = incomingMessage.trim();
     if (choice === '1' || choice.toLowerCase().includes('itr')) {
+      sessionMenuOverride.delete(senderJid);
       const currentServices = client.services || [];
       if (!currentServices.includes('ITR')) {
         const newServices = [...currentServices, 'ITR'];
@@ -367,6 +414,7 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         }
       }
     } else if (choice === '2' || choice.toLowerCase().includes('dsc')) {
+      sessionMenuOverride.delete(senderJid);
       if (!client.company_id) {
         await sendMessage('⚠️ Account configuration issue (missing Company ID). Please contact support.');
         return;
@@ -397,7 +445,8 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
           `• Type: *${typeStr}*\n` +
           `• Status: *Active / Completed*` +
           `${expiryInfo}\n\n` +
-          `If you need to renew your DSC or make any changes, please contact our team.`
+          `If you need to renew your DSC or make any changes, please contact our team.\n\n` +
+          `_Type *menu* to return to the Main Menu._`
         );
       } else if (activeDsc.user_type) {
         const typeStr = activeDsc.user_type === 'INDIVIDUAL' ? 'Individual' : 'Organization';
@@ -405,7 +454,8 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
           `🔑 *DSC Application — ${typeStr}*\n\n` +
           `Your request is registered.\n\n` +
           `To complete the process, please record your *Video verification* using the link sent by our team.\n\n` +
-          `_We will notify you once it's done!_`
+          `_We will notify you once it's done!_\n\n` +
+          `_Type *menu* to return to the Main Menu._`
         );
       } else {
         await updateDscApplication(activeDsc.id, { status: 'AWAITING_TYPE' });
@@ -826,7 +876,8 @@ const handleItrFlow = async (
             `• Type: *${typeStr}*\n` +
             `• Status: *Active / Completed*` +
             `${expiryInfo}\n\n` +
-            `If you need to renew your DSC or make any changes, please contact our team.`
+            `If you need to renew your DSC or make any changes, please contact our team.\n\n` +
+            `_Type *menu* to return to the Main Menu._`
           );
         } else if (dsc.user_type) {
           const typeStr = dsc.user_type === 'INDIVIDUAL' ? 'Individual' : 'Organization';
@@ -834,7 +885,8 @@ const handleItrFlow = async (
             `🔑 *DSC Application — ${typeStr}*\n\n` +
             `Your request is registered.\n\n` +
             `To complete the process, please record your *Video verification* using the link sent by our team.\n\n` +
-            `_We will notify you once it's done!_`
+            `_We will notify you once it's done!_\n\n` +
+            `_Type *menu* to return to the Main Menu._`
           );
         } else {
           await updateDscApplication(dsc.id, { status: 'AWAITING_TYPE' });
@@ -1182,16 +1234,19 @@ const handleItrFlow = async (
       if (filing.filing_status === 'FILED') {
         await sendMessage(
           `🎉 Your ITR for *FY ${filing.fy_year}* has been filed! ✅\n\n` +
-          `Your ITR-V receipt was shared above. For queries, contact ${SUPPORT_PHONE}.`
+          `Your ITR-V receipt was shared above. For queries, contact ${SUPPORT_PHONE}.\n\n` +
+          `_Type *menu* to return to the Main Menu._`
         );
       } else if (filing.filing_status === 'DOCS_VERIFIED') {
         await sendMessage(
           `📑 Your docs for *FY ${filing.fy_year}* are verified!\n\n` +
-          `CA team is preparing your return. We'll notify you once filed.\n_Queries? ${SUPPORT_PHONE}_`
+          `CA team is preparing your return. We'll notify you once filed.\n_Queries? ${SUPPORT_PHONE}_\n\n` +
+          `_Type *menu* to return to the Main Menu._`
         );
       } else {
         await sendMessage(
-          `📊 Your ITR docs for *FY ${filing.fy_year}* are under review.\n_Queries? ${SUPPORT_PHONE}_`
+          `📊 Your ITR docs for *FY ${filing.fy_year}* are under review.\n_Queries? ${SUPPORT_PHONE}_\n\n` +
+          `_Type *menu* to return to the Main Menu._`
         );
       }
       break;
@@ -1251,7 +1306,7 @@ const handleDscFlow = async (
         `⏳ *Awaiting DSC Video Verification*\n\n` +
         `Please complete the Video KYC using the partner verification link sent to you.\n\n` +
         `If you haven't received the link yet, our CA team will message it to you shortly.\n\n` +
-        `_Type *back* to edit DSC type._`
+        `_Type *back* to edit DSC type, or *menu* to return to the Main Menu._`
       );
       break;
     }
@@ -1260,7 +1315,8 @@ const handleDscFlow = async (
       await sendMessage(
         `✅ *DSC Completed*\n\n` +
         `Your Digital Signature Certificate is ready and stored safely in our office.\n\n` +
-        `If you need any changes, please contact us.`
+        `If you need any changes, please contact us.\n\n` +
+        `_Type *menu* to return to the Main Menu._`
       );
       break;
     }
