@@ -4,6 +4,10 @@ All notable changes to the CA-bOt WhatsApp Bot Backend will be documented in thi
 
 ## [1.8.0] - 2026-06-13
 ### Added
+- **DSC Expiry Reminder System**:
+  - Implemented the background scheduler service `dsc-expiry-reminder.service.ts` to query DSCs expiring in exactly 7, 3, or 1 days.
+  - Added JSON configuration storage file `dsc-expiry-settings.json`.
+  - Created routes `/api/dsc-expiry-reminders/status`, `/api/dsc-expiry-reminders/toggle`, and `/api/dsc-expiry-reminders/trigger` for admin configuration and dry-run target listings.
 - **Optional Target JIDs in Broadcast API**:
   - Enhanced the `/api/broadcast-message` POST endpoint to accept an optional `jids` list in the request payload.
   - Limits the WhatsApp broadcast message to only the provided recipient JIDs when present, while preserving backward compatibility (broadcasting to all registered clients if omitted).

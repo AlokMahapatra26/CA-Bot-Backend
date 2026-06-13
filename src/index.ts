@@ -4,6 +4,8 @@ import { messageService } from './providers';
 import { handleIncomingMessage } from './controllers/whatsapp.controller';
 import { supabase } from './services/supabase.service';
 import { reminderService } from './services/reminder.service';
+import { dscReminderService } from './services/dsc-reminder.service';
+import { dscExpiryReminderService } from './services/dsc-expiry-reminder.service';
 
 const app = express();
 app.use(express.json());
@@ -174,8 +176,90 @@ app.post('/api/reminders/trigger', async (req, res) => {
   }
 });
 
+// ── DSC Document Reminder System routes ───────────────────────────────────────
+app.get('/api/dsc-reminders/status', async (req, res) => {
+  try {
+    const status = dscReminderService.getSettings();
+    const activeClients = await dscReminderService.dryRun();
+    return res.json({ success: true, ...status, activeClients });
+  } catch (error: any) {
+    console.error('Failed to fetch DSC reminder status:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/dsc-reminders/toggle', async (req, res) => {
+  const { enabled, intervalHours, isTesting } = req.body;
+
+  if (typeof enabled !== 'boolean' || typeof intervalHours !== 'number') {
+    return res.status(400).json({ error: 'Missing enabled (boolean) or intervalHours (number) parameters' });
+  }
+
+  try {
+    const status = await dscReminderService.toggle(enabled, intervalHours, isTesting);
+    const activeClients = await dscReminderService.dryRun();
+    return res.json({ success: true, ...status, activeClients });
+  } catch (error: any) {
+    console.error('Failed to toggle DSC reminder scheduler:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/dsc-reminders/trigger', async (req, res) => {
+  try {
+    const result = await dscReminderService.triggerReminders();
+    const status = dscReminderService.getSettings();
+    return res.json({ ...result, ...status });
+  } catch (error: any) {
+    console.error('Failed to manually trigger DSC reminders:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// ── DSC Expiry Reminder System routes ─────────────────────────────────────────
+app.get('/api/dsc-expiry-reminders/status', async (req, res) => {
+  try {
+    const status = dscExpiryReminderService.getSettings();
+    const activeClients = await dscExpiryReminderService.dryRun();
+    return res.json({ success: true, ...status, activeClients });
+  } catch (error: any) {
+    console.error('Failed to fetch DSC expiry reminder status:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/dsc-expiry-reminders/toggle', async (req, res) => {
+  const { enabled, remindDays, isTesting } = req.body;
+
+  if (typeof enabled !== 'boolean' || !Array.isArray(remindDays)) {
+    return res.status(400).json({ error: 'Missing enabled (boolean) or remindDays (array) parameters' });
+  }
+
+  try {
+    const status = await dscExpiryReminderService.toggle(enabled, remindDays, isTesting);
+    const activeClients = await dscExpiryReminderService.dryRun();
+    return res.json({ success: true, ...status, activeClients });
+  } catch (error: any) {
+    console.error('Failed to toggle DSC expiry reminder scheduler:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/dsc-expiry-reminders/trigger', async (req, res) => {
+  try {
+    const result = await dscExpiryReminderService.triggerReminders();
+    const status = dscExpiryReminderService.getSettings();
+    return res.json({ ...result, ...status });
+  } catch (error: any) {
+    console.error('Failed to manually trigger DSC expiry reminders:', error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
 app.listen(config.PORT, async () => {
   console.log(`Server is running on port ${config.PORT}`);
   await messageService.initialize(handleIncomingMessage);
   await reminderService.initialize();
+  await dscReminderService.initialize();
+  await dscExpiryReminderService.initialize();
 });
