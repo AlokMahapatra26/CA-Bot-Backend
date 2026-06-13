@@ -10,6 +10,10 @@ import {
   uploadDocument,
   ClientBotStatus,
   ItrStatus,
+  DscStatus,
+  getDscApplication,
+  createDscApplication,
+  updateDscApplication,
 } from '../services/supabase.service';
 import { getFinancialAndAssessmentYear } from '../utils/date';
 import { resolvePhoneNumber } from '../utils/jid';
@@ -138,6 +142,40 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         return;
       }
 
+      // Check if they are backtracking in DSC flow first
+      const dsc = await getDscApplication(client.id);
+      if (dsc && dsc.status !== 'COMPLETED') {
+        let prevDscStatus: DscStatus = 'AWAITING_TYPE';
+        let fieldsToClear: Record<string, any> = {};
+        
+        if (dsc.status === 'AWAITING_TYPE') {
+          await supabase.from('dsc_applications').delete().eq('id', dsc.id);
+          await sendMessage('↩️ *Returning to Main Menu...*');
+          const { fy } = getFinancialAndAssessmentYear();
+          await sendMessage(
+            `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
+            `*1* — 📊 ITR Filing for FY ${fy}\n` +
+            `*2* — 🔑 DSC Application\n\n` +
+            `Reply with the service number (1 or 2).`
+          );
+          return;
+        } else if (dsc.status === 'AWAITING_VIDEO_VERIFICATION') {
+          prevDscStatus = 'AWAITING_TYPE';
+          fieldsToClear = { user_type: null };
+        }
+        
+        const updated = await updateDscApplication(dsc.id, {
+          status: prevDscStatus,
+          ...fieldsToClear
+        });
+        
+        await sendMessage('↩️ *Going back to previous step...*');
+        if (updated) {
+          await handleDscFlow(client, updated, '', sendMessage);
+        }
+        return;
+      }
+
       const { fy } = getFinancialAndAssessmentYear();
       const filing = await getFiling(client.id, fy);
       if (filing && filing.status !== 'COMPLETED') {
@@ -250,44 +288,92 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
     }
 
     const { fy, ay } = getFinancialAndAssessmentYear();
-    let filing = await getFiling(client.id, fy);
+    
+    // Query active states
+    const filing = await getFiling(client.id, fy);
+    const dsc = await getDscApplication(client.id);
 
-    // If they do not have a filing record yet, it means they have NOT opted for ITR yet!
-    if (!filing) {
-      const choice = incomingMessage.trim();
-      if (choice === '1' || choice.toLowerCase().includes('itr')) {
-        filing = await createFiling(client.id, fy);
-        if (!filing) {
-          await sendMessage('⚠️ Failed to start ITR filing. Please try again.');
-          return;
-        }
-        await updateFiling(filing.id, { status: 'AWAITING_BANK_NAME' });
-        await sendMessage(
-          `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
-          `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_`
-        );
-      } else {
-        await sendMessage(
-          `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
-          `*1* — 📊 ITR Filing for FY ${fy}\n\n` +
-          `Reply *1* to select.\n\n` +
-          `_More services coming soon!_`
-        );
+    // Route to active DSC flow if in progress
+    if (dsc && dsc.status !== 'COMPLETED') {
+      if (isGreeting(incomingMessage)) {
+        await sendMessage(`👋 Welcome back, *${client.full_name}*! Resuming your DSC Application:`);
+        await handleDscFlow(client, dsc, '', sendMessage);
+        return;
       }
+      await handleDscFlow(client, dsc, incomingMessage, sendMessage);
       return;
     }
 
-    // If they already have a filing, process the active ITR flow!
-    const userName = client.full_name || 'there';
-
-    // If user sends a greeting/menu while already in an active ITR flow, re-prompt their current step
-    if (isGreeting(incomingMessage) && filing.status !== 'COMPLETED') {
-      await sendMessage(`👋 Welcome back, *${client.full_name}*! Resuming your ITR filing for *FY ${fy}*:`);
-      await handleItrFlow(client, filing, '', false, null, fy, ay, userName, sendMessage);
+    // Route to active ITR flow if in progress
+    if (filing && filing.status !== 'SERVICE_MENU' && filing.status !== 'COMPLETED') {
+      const userName = client.full_name || 'there';
+      if (isGreeting(incomingMessage)) {
+        await sendMessage(`👋 Welcome back, *${client.full_name}*! Resuming your ITR filing for *FY ${fy}*:`);
+        await handleItrFlow(client, filing, '', false, null, fy, ay, userName, sendMessage);
+        return;
+      }
+      await handleItrFlow(client, filing, incomingMessage, isMedia, mediaUrl, fy, ay, userName, sendMessage);
       return;
     }
 
-    await handleItrFlow(client, filing, incomingMessage, isMedia, mediaUrl, fy, ay, userName, sendMessage);
+    // Otherwise, they are on the Service Selection Menu
+    const choice = incomingMessage.trim();
+    if (choice === '1' || choice.toLowerCase().includes('itr')) {
+      const currentServices = client.services || [];
+      if (!currentServices.includes('ITR')) {
+        const newServices = [...currentServices, 'ITR'];
+        await updateClient(client.id, { services: newServices });
+        client.services = newServices;
+      }
+      let activeFiling = filing;
+      if (!activeFiling) {
+        activeFiling = await createFiling(client.id, fy);
+      }
+      if (!activeFiling) {
+        await sendMessage('⚠️ Failed to start ITR filing. Please try again.');
+        return;
+      }
+      await updateFiling(activeFiling.id, { status: 'AWAITING_BANK_NAME' });
+      await sendMessage(
+        `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
+        `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n_Type *back* to go to previous step._`
+      );
+    } else if (choice === '2' || choice.toLowerCase().includes('dsc')) {
+      if (!client.company_id) {
+        await sendMessage('⚠️ Account configuration issue (missing Company ID). Please contact support.');
+        return;
+      }
+      const currentServices = client.services || [];
+      if (!currentServices.includes('DSC')) {
+        const newServices = [...currentServices, 'DSC'];
+        await updateClient(client.id, { services: newServices });
+        client.services = newServices;
+      }
+      let activeDsc = dsc;
+      if (!activeDsc) {
+        activeDsc = await createDscApplication(client.id, client.company_id);
+      }
+      if (!activeDsc) {
+        await sendMessage('⚠️ Failed to start DSC Application. Please try again.');
+        return;
+      }
+      await updateDscApplication(activeDsc.id, { status: 'AWAITING_TYPE' });
+      await sendMessage(
+        `🔑 *DSC Application Type*\n\n` +
+        `Please select the type of DSC:\n` +
+        `*1* — Individual\n` +
+        `*2* — Organization\n\n` +
+        `Reply *1* or *2* to select.\n\n` +
+        `_Type *back* to return to the Main Menu._`
+      );
+    } else {
+      await sendMessage(
+        `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
+        `*1* — 📊 ITR Filing for FY ${fy}\n` +
+        `*2* — 🔑 DSC Application\n\n` +
+        `Reply with the service number (1 or 2).`
+      );
+    }
 
   } catch (error) {
     console.error('Error handling WhatsApp message:', error);
@@ -345,9 +431,10 @@ const routeToNextOnboardingStep = async (
       } else {
         await sendMessage(
           `🎉 *Registration Complete!*\n\n` +
-          `*1* — 📊 ITR Filing for FY ${fy}\n\n` +
-          `Reply *1* to select.\n\n` +
-          `_More services coming soon!_`
+          `👋 Hi *${name}*! What service do you need?\n\n` +
+          `*1* — 📊 ITR Filing for FY ${fy}\n` +
+          `*2* — 🔑 DSC Application\n\n` +
+          `Reply with the service number (1 or 2).`
         );
       }
     } else {
@@ -617,14 +704,51 @@ const handleItrFlow = async (
     case 'SERVICE_MENU': {
       const choice = incomingMessage.trim();
       if (choice === '1' || choice.toLowerCase().includes('itr')) {
+        const currentServices = client.services || [];
+        if (!currentServices.includes('ITR')) {
+          const newServices = [...currentServices, 'ITR'];
+          await updateClient(client.id, { services: newServices });
+          client.services = newServices;
+        }
         await updateFiling(filing.id, { status: 'AWAITING_BANK_NAME' });
         await sendMessage(
           `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
           `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n_Type *back* to go to previous step._`
         );
+      } else if (choice === '2' || choice.toLowerCase().includes('dsc')) {
+        if (!client.company_id) {
+          await sendMessage('⚠️ Account configuration issue (missing Company ID). Please contact support.');
+          return;
+        }
+        const currentServices = client.services || [];
+        if (!currentServices.includes('DSC')) {
+          const newServices = [...currentServices, 'DSC'];
+          await updateClient(client.id, { services: newServices });
+          client.services = newServices;
+        }
+        let dsc = await getDscApplication(client.id);
+        if (!dsc) {
+          dsc = await createDscApplication(client.id, client.company_id);
+        }
+        if (!dsc) {
+          await sendMessage('⚠️ Failed to start DSC Application. Please try again.');
+          return;
+        }
+        await updateDscApplication(dsc.id, { status: 'AWAITING_TYPE' });
+        await sendMessage(
+          `🔑 *DSC Application Type*\n\n` +
+          `Please select the type of DSC:\n` +
+          `*1* — Individual\n` +
+          `*2* — Organization\n\n` +
+          `Reply *1* or *2* to select.\n\n` +
+          `_Type *back* to return to the Main Menu._`
+        );
       } else {
         await sendMessage(
-          `Reply *1* for 📊 ITR Filing\n\n_More services coming soon!_`
+          `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
+          `*1* — 📊 ITR Filing for FY ${fy}\n` +
+          `*2* — 🔑 DSC Application\n\n` +
+          `Reply with the service number (1 or 2).`
         );
       }
       break;
@@ -930,5 +1054,70 @@ const handleItrFlow = async (
 
     default:
       await sendMessage('An unexpected error occurred. Please type *hi* to restart, or contact our support.');
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// DSC CONVERSATIONAL FLOW HANDLER
+// ─────────────────────────────────────────────────────────────────
+
+const handleDscFlow = async (
+  client: any,
+  dsc: any,
+  incomingMessage: string,
+  sendMessage: (text: string) => Promise<void>
+) => {
+  const dscId = dsc.id;
+
+  switch (dsc.status) {
+    case 'AWAITING_TYPE': {
+      const choice = incomingMessage.trim();
+      if (choice === '1' || choice.toLowerCase().includes('individual')) {
+        await updateDscApplication(dscId, { user_type: 'INDIVIDUAL', status: 'AWAITING_VIDEO_VERIFICATION' });
+        await sendMessage(
+          `🔑 *DSC Application — Individual*\n\n` +
+          `Your request has been registered.\n\n` +
+          `To complete the process, please record your *Video verification* using the link sent by our team.\n\n` +
+          `_We will notify you once it's done!_`
+        );
+      } else if (choice === '2' || choice.toLowerCase().includes('org') || choice.toLowerCase().includes('company')) {
+        await updateDscApplication(dscId, { user_type: 'ORGANIZATION', status: 'AWAITING_VIDEO_VERIFICATION' });
+        await sendMessage(
+          `🔑 *DSC Application — Organization*\n\n` +
+          `Your request has been registered.\n\n` +
+          `To complete the process, please record your *Video verification* using the link sent by our team.\n\n` +
+          `_We will notify you once it's done!_`
+        );
+      } else {
+        await sendMessage(
+          `🔑 *DSC Application Type*\n\n` +
+          `Please select the type of DSC:\n` +
+          `*1* — Individual\n` +
+          `*2* — Organization\n\n` +
+          `Reply *1* or *2* to select.\n\n` +
+          `_Type *back* to return to the Main Menu._`
+        );
+      }
+      break;
+    }
+
+    case 'AWAITING_VIDEO_VERIFICATION': {
+      await sendMessage(
+        `⏳ *Awaiting DSC Video Verification*\n\n` +
+        `Please complete the Video KYC using the partner verification link sent to you.\n\n` +
+        `If you haven't received the link yet, our CA team will message it to you shortly.\n\n` +
+        `_Type *back* to edit DSC type._`
+      );
+      break;
+    }
+
+    case 'COMPLETED': {
+      await sendMessage(
+        `✅ *DSC Completed*\n\n` +
+        `Your Digital Signature Certificate is ready and stored safely in our office.\n\n` +
+        `If you need any changes, please contact us.`
+      );
+      break;
+    }
   }
 };

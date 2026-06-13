@@ -75,6 +75,8 @@ export interface Client {
   aadhaar_media_url: string | null;
   bot_status: ClientBotStatus | null;
   account_status: AccountStatus | null;
+  company_id: string | null;
+  services?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -178,6 +180,65 @@ export const updateFiling = async (filingId: string, updates: Partial<ItrFiling>
     .select()
     .single();
   if (error) console.error('Error updating filing:', error);
+  return data;
+};
+
+// ─────────────────────────────────────────────────────────────────
+// DSC OPERATIONS
+// ─────────────────────────────────────────────────────────────────
+
+export type DscStatus =
+  | 'AWAITING_TYPE'
+  | 'AWAITING_VIDEO_VERIFICATION'
+  | 'COMPLETED';
+
+export interface DscApplication {
+  id: string;
+  client_id: string;
+  company_id: string;
+  assigned_to: string | null;
+  user_type: 'INDIVIDUAL' | 'ORGANIZATION' | null;
+  provider: string | null;
+  status: DscStatus;
+  payment_status: string;
+  token_pin: string | null;
+  token_location: string | null;
+  expiry_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getDscApplication = async (clientId: string): Promise<DscApplication | null> => {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('dsc_applications')
+    .select('*')
+    .eq('client_id', clientId)
+    .maybeSingle();
+  if (error) console.error('Error fetching DSC application:', error);
+  return data;
+};
+
+export const createDscApplication = async (clientId: string, companyId: string): Promise<DscApplication | null> => {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('dsc_applications')
+    .insert([{ client_id: clientId, company_id: companyId, status: 'AWAITING_TYPE' }])
+    .select()
+    .single();
+  if (error) console.error('Error creating DSC application:', error);
+  return data;
+};
+
+export const updateDscApplication = async (dscId: string, updates: Partial<DscApplication>): Promise<DscApplication | null> => {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('dsc_applications')
+    .update(updates)
+    .eq('id', dscId)
+    .select()
+    .single();
+  if (error) console.error('Error updating DSC application:', error);
   return data;
 };
 

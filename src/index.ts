@@ -71,9 +71,9 @@ app.post('/api/send-message', async (req, res) => {
   }
 });
 
-// ── Broadcast message to all registered clients ─────────────────────────────────
+// ── Broadcast message to all registered or specific clients ───────────────────
 app.post('/api/broadcast-message', async (req, res) => {
-  const { text } = req.body;
+  const { text, jids } = req.body;
 
   if (!text) {
     return res.status(400).json({ error: 'Missing text parameter' });
@@ -89,17 +89,24 @@ app.post('/api/broadcast-message', async (req, res) => {
   }
 
   try {
-    // 1. Fetch all clients who have a WhatsApp JID
-    const { data: clients, error } = await supabase
-      .from('clients')
-      .select('whatsapp_jid')
-      .not('whatsapp_jid', 'is', null);
+    let targetClients: { whatsapp_jid: string | null }[] = [];
 
-    if (error) {
-      throw error;
+    if (jids && Array.isArray(jids)) {
+      targetClients = jids.map((jid: string) => ({ whatsapp_jid: jid }));
+    } else {
+      // 1. Fetch all clients who have a WhatsApp JID
+      const { data, error } = await supabase
+        .from('clients')
+        .select('whatsapp_jid')
+        .not('whatsapp_jid', 'is', null);
+
+      if (error) {
+        throw error;
+      }
+      targetClients = data || [];
     }
 
-    if (!clients || clients.length === 0) {
+    if (!targetClients || targetClients.length === 0) {
       return res.json({ success: true, count: 0, message: 'No clients to broadcast' });
     }
 
@@ -107,7 +114,7 @@ app.post('/api/broadcast-message', async (req, res) => {
     let successCount = 0;
     let failCount = 0;
 
-    for (const client of clients) {
+    for (const client of targetClients) {
       if (client.whatsapp_jid) {
         try {
           await messageService.sendText(client.whatsapp_jid, text);
