@@ -380,6 +380,28 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         await sendMessage('⚠️ Failed to start ITR filing. Please try again.');
         return;
       }
+
+      if (activeFiling.status === 'COMPLETED') {
+        if (activeFiling.filing_status === 'FILED') {
+          await sendMessage(
+            `🎉 Your ITR for *FY ${activeFiling.fy_year}* has been filed! ✅\n\n` +
+            `Your ITR-V receipt was shared above. For queries, contact ${SUPPORT_PHONE}.\n\n` +
+            `_Type *menu* to return to the Main Menu._`
+          );
+        } else if (activeFiling.filing_status === 'DOCS_VERIFIED') {
+          await sendMessage(
+            `📑 Your docs for *FY ${activeFiling.fy_year}* are verified!\n\n` +
+            `CA team is preparing your return. We'll notify you once filed.\n_Queries? ${SUPPORT_PHONE}_\n\n` +
+            `_Type *menu* to return to the Main Menu._`
+          );
+        } else {
+          await sendMessage(
+            `📊 Your ITR docs for *FY ${activeFiling.fy_year}* are under review.\n_Queries? ${SUPPORT_PHONE}_\n\n` +
+            `_Type *menu* to return to the Main Menu._`
+          );
+        }
+        return;
+      }
       
       // Determine where to resume based on existing fields
       let nextStatus: ItrStatus = 'AWAITING_BANK_NAME';
