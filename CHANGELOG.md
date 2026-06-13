@@ -2,6 +2,17 @@
 
 All notable changes to the CA-bOt WhatsApp Bot Backend will be documented in this file.
 
+## [1.9.0] - 2026-06-13
+### Added
+- **Standard Cron Scheduler (`node-cron`)**:
+  - Upgraded ITR document reminders, DSC document reminders, and DSC expiry alerts from `setInterval` to standard node-cron schedulers.
+  - Implemented robust immediate startup evaluations to verify and catch up on missed daily runs (due to server offline/restart intervals).
+  - Added support for custom hour intervals mapping cleanly to hourly/daily cron expressions.
+- **Session Timeout & Menu Control**:
+  - Added a 5-minute inactivity session timeout mechanism returning idle users to the Welcome Menu.
+  - Enabled global text navigation commands (`menu`, `exit`) to return to the Main Menu from anywhere.
+  - Fixed a bug where returning to the main menu and selecting ITR would reset completed filing steps.
+
 ## [1.8.0] - 2026-06-13
 ### Added
 - **DSC Expiry Reminder System**:
