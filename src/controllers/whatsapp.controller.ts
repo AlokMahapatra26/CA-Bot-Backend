@@ -333,11 +333,39 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         await sendMessage('⚠️ Failed to start ITR filing. Please try again.');
         return;
       }
-      await updateFiling(activeFiling.id, { status: 'AWAITING_BANK_NAME' });
-      await sendMessage(
-        `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
-        `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n_Type *back* to go to previous step._`
-      );
+      
+      // Determine where to resume based on existing fields
+      let nextStatus: ItrStatus = 'AWAITING_BANK_NAME';
+      if (!activeFiling.bank_name) {
+        nextStatus = 'AWAITING_BANK_NAME';
+      } else if (!activeFiling.bank_account_number) {
+        nextStatus = 'AWAITING_BANK_ACC';
+      } else if (!activeFiling.bank_ifsc) {
+        nextStatus = 'AWAITING_BANK_IFSC';
+      } else if (!activeFiling.income_source) {
+        nextStatus = 'AWAITING_INCOME_SOURCE';
+      } else {
+        if (activeFiling.income_source === 'SALARIED') {
+          nextStatus = activeFiling.form16_media_url ? 'AWAITING_PROPERTY_SALE_DECISION' : 'AWAITING_FORM16';
+        } else if (activeFiling.income_source === 'BUSINESS') {
+          nextStatus = activeFiling.bank_statement_media_url ? 'AWAITING_PROPERTY_SALE_DECISION' : 'AWAITING_BANK_STATEMENT';
+        } else {
+          nextStatus = 'AWAITING_INCOME_SOURCE';
+        }
+      }
+
+      const updated = await updateFiling(activeFiling.id, { status: nextStatus });
+      if (nextStatus === 'AWAITING_BANK_NAME') {
+        await sendMessage(
+          `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
+          `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n_Type *back* to go to previous step._`
+        );
+      } else {
+        await sendMessage(`👋 Welcome back, *${client.full_name || 'there'}*! Resuming your ITR filing for *FY ${fy}*:`);
+        if (updated) {
+          await handleItrFlow(client, updated, '', false, null, fy, ay, client.full_name || 'there', sendMessage);
+        }
+      }
     } else if (choice === '2' || choice.toLowerCase().includes('dsc')) {
       if (!client.company_id) {
         await sendMessage('⚠️ Account configuration issue (missing Company ID). Please contact support.');
@@ -710,11 +738,39 @@ const handleItrFlow = async (
           await updateClient(client.id, { services: newServices });
           client.services = newServices;
         }
-        await updateFiling(filing.id, { status: 'AWAITING_BANK_NAME' });
-        await sendMessage(
-          `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
-          `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n_Type *back* to go to previous step._`
-        );
+        
+        // Determine where to resume based on existing fields
+        let nextStatus: ItrStatus = 'AWAITING_BANK_NAME';
+        if (!filing.bank_name) {
+          nextStatus = 'AWAITING_BANK_NAME';
+        } else if (!filing.bank_account_number) {
+          nextStatus = 'AWAITING_BANK_ACC';
+        } else if (!filing.bank_ifsc) {
+          nextStatus = 'AWAITING_BANK_IFSC';
+        } else if (!filing.income_source) {
+          nextStatus = 'AWAITING_INCOME_SOURCE';
+        } else {
+          if (filing.income_source === 'SALARIED') {
+            nextStatus = filing.form16_media_url ? 'AWAITING_PROPERTY_SALE_DECISION' : 'AWAITING_FORM16';
+          } else if (filing.income_source === 'BUSINESS') {
+            nextStatus = filing.bank_statement_media_url ? 'AWAITING_PROPERTY_SALE_DECISION' : 'AWAITING_BANK_STATEMENT';
+          } else {
+            nextStatus = 'AWAITING_INCOME_SOURCE';
+          }
+        }
+
+        const updated = await updateFiling(filing.id, { status: nextStatus });
+        if (nextStatus === 'AWAITING_BANK_NAME') {
+          await sendMessage(
+            `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
+            `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n_Type *back* to go to previous step._`
+          );
+        } else {
+          await sendMessage(`👋 Welcome back, *${client.full_name || 'there'}*! Resuming your ITR filing for *FY ${fy}*:`);
+          if (updated) {
+            await handleItrFlow(client, updated, '', false, null, fy, ay, client.full_name || 'there', sendMessage);
+          }
+        }
       } else if (choice === '2' || choice.toLowerCase().includes('dsc')) {
         if (!client.company_id) {
           await sendMessage('⚠️ Account configuration issue (missing Company ID). Please contact support.');
@@ -785,7 +841,11 @@ const handleItrFlow = async (
     // ── COLLECT BANK ACCOUNT NUMBER ────────────────────────────────
     case 'AWAITING_BANK_ACC': {
       if (isMedia || !incomingMessage) {
-        await sendMessage('⚠️ Please enter your *Bank Account Number* (digits only, 6–18 digits).');
+        if (!incomingMessage) {
+          await sendMessage(`🏦 *ITR Filing — Bank Details*\n\nPlease enter your *Bank Account Number*\n\n_Type *back* to go to previous step._`);
+        } else {
+          await sendMessage('⚠️ Please enter your *Bank Account Number* (digits only, 6–18 digits).');
+        }
         return;
       }
       const acc = incomingMessage.replace(/\s/g, '');
@@ -817,7 +877,11 @@ const handleItrFlow = async (
     // ── COLLECT IFSC CODE ──────────────────────────────────────────
     case 'AWAITING_BANK_IFSC': {
       if (isMedia || !incomingMessage) {
-        await sendMessage('⚠️ Please enter a valid *IFSC Code* (e.g., HDFC0001234).');
+        if (!incomingMessage) {
+          await sendMessage(`🏦 *ITR Filing — Bank Details*\n\nEnter your bank's *IFSC Code*\n_e.g., HDFC0001234_\n\n_Type *back* to go to previous step._`);
+        } else {
+          await sendMessage('⚠️ Please enter a valid *IFSC Code* (e.g., HDFC0001234).');
+        }
         return;
       }
       const ifsc = incomingMessage.trim().toUpperCase();
@@ -881,6 +945,15 @@ const handleItrFlow = async (
     // ── SELECT INCOME SOURCE ────────────────────────────────────────
     case 'AWAITING_INCOME_SOURCE': {
       const choice = incomingMessage.trim();
+      if (!choice) {
+        await sendMessage(
+          `*Select your income source:*\n\n` +
+          `*1* — 👔 Salaried\n` +
+          `*2* — 💼 Business / Freelancer\n\n` +
+          `_Type *back* to go to previous step._`
+        );
+        break;
+      }
       if (choice === '1') {
         await updateFiling(filing.id, { income_source: 'SALARIED', status: 'AWAITING_FORM16' });
         await sendMessage(`👔 Upload your *Form 16* 📎\n_PDF or photo._\n\n_Type *back* to go to previous step._`);
@@ -906,6 +979,8 @@ const handleItrFlow = async (
           `*1* — Yes\n` +
           `*2* — No`
         );
+      } else if (!incomingMessage) {
+        await sendMessage(`👔 Upload your *Form 16* 📎\n_PDF or photo._\n\n_Type *back* to go to previous step._`);
       } else {
         await sendMessage(`⚠️ Please upload your Form 16 file (PDF or photo) to proceed.`);
       }
@@ -928,6 +1003,8 @@ const handleItrFlow = async (
         }
         await updateFiling(filing.id, { status: 'AWAITING_PROPERTY_SALE_DECISION' });
         await sendMessage(`Any *property bought/sold* this year?\n\n*1* — Yes\n*2* — No`);
+      } else if (!incomingMessage) {
+        await sendMessage(`💼 Upload your *Bank Statement* for FY ${fy} 📎\n_PDF or photo. Upload more or reply *DONE* when finished._\n\n_Type *back* to go to previous step._`);
       } else {
         await sendMessage(`⚠️ Upload your Bank Statement or reply *DONE*.`);
       }
@@ -950,6 +1027,8 @@ const handleItrFlow = async (
         }
         await updateFiling(filing.id, { status: 'AWAITING_PROPERTY_SALE_DECISION' });
         await sendMessage(`Any *property bought/sold* this year?\n\n*1* — Yes\n*2* — No`);
+      } else if (!incomingMessage) {
+        await sendMessage(`📈 Upload your *Capital Gains Statement* 📎\n_Upload more or reply *DONE* when finished._\n\n_Type *back* to go to previous step._`);
       } else {
         await sendMessage(`⚠️ Upload your Capital Gains Statement or reply *DONE*.`);
       }
@@ -972,6 +1051,8 @@ const handleItrFlow = async (
         }
         await updateFiling(filing.id, { status: 'AWAITING_OTHER_DOCS_DECISION' });
         await sendMessage(`Any *other tax documents* to share?\n\n*1* — Yes\n*2* — No, I'm done`);
+      } else if (!incomingMessage) {
+        await sendMessage(`🏠 Upload your *Property Sale/Purchase Deeds* 📎\n_Upload more or reply *DONE* when finished._\n\n_Type *back* to go to previous step._`);
       } else {
         await sendMessage(`⚠️ Upload your property docs or reply *DONE*.`);
       }
@@ -987,6 +1068,13 @@ const handleItrFlow = async (
       } else if (choice === '2') {
         await updateFiling(filing.id, { status: 'AWAITING_OTHER_DOCS_DECISION' });
         await sendMessage(`Any *other tax documents* to share?\n\n*1* — Yes\n*2* — No, I'm done`);
+      } else if (!incomingMessage) {
+        await sendMessage(
+          `🏠 Any *property bought/sold* this year?\n\n` +
+          `*1* — Yes\n` +
+          `*2* — No\n\n` +
+          `_Type *back* to go to previous step._`
+        );
       } else {
         await sendMessage(`⚠️ Reply *1* (Yes) or *2* (No).`);
       }
@@ -1004,6 +1092,13 @@ const handleItrFlow = async (
         await sendMessage(
           `🎉 *All done!* Your ITR filing for *FY ${filing.fy_year}* has been submitted.\n\n` +
           `Our CA team will review and get back to you. Thank you! 🙏`
+        );
+      } else if (!incomingMessage) {
+        await sendMessage(
+          `📎 Any *other tax documents* to share?\n\n` +
+          `*1* — Yes\n` +
+          `*2* — No, I'm done\n\n` +
+          `_Type *back* to go to previous step._`
         );
       } else {
         await sendMessage(`⚠️ Reply *1* (Yes) or *2* (No, I'm done).`);
@@ -1026,6 +1121,8 @@ const handleItrFlow = async (
           `🎉 *All done!* Your ITR filing for *FY ${filing.fy_year}* has been submitted.\n\n` +
           `Our CA team will review and get back to you. Thank you! 🙏`
         );
+      } else if (!incomingMessage) {
+        await sendMessage(`📎 Upload your other tax docs. Send more or reply *DONE* when finished.\n\n_Type *back* to go to previous step._`);
       } else {
         await sendMessage(`⚠️ Upload a document or reply *DONE* to submit.`);
       }
