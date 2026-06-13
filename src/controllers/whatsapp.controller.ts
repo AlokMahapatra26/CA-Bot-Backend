@@ -426,8 +426,10 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
       const updated = await updateFiling(activeFiling.id, { status: nextStatus });
       if (nextStatus === 'AWAITING_BANK_NAME') {
         await sendMessage(
-          `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
-          `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n_Type *back* to go to previous step._`
+          `Great! Let's start your ITR filing for *FY ${fy} (AY ${ay})*. 📊\n\n` +
+          `To begin, please provide your bank details for tax refunds.\n\n` +
+          `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n` +
+          `_Type *back* to return to the Main Menu._`
         );
       } else {
         await sendMessage(`👋 Welcome back, *${client.full_name || 'there'}*! Resuming your ITR filing for *FY ${fy}*:`);
@@ -468,7 +470,7 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
           `• Status: *Active / Completed*` +
           `${expiryInfo}\n\n` +
           `If you need to renew your DSC or make any changes, please contact our team.\n\n` +
-          `_Type *menu* to return to the Main Menu._`
+          `_Reply *1* for ITR Filing, or type *menu* for the Main Menu._`
         );
       } else if (activeDsc.user_type) {
         const typeStr = activeDsc.user_type === 'INDIVIDUAL' ? 'Individual' : 'Organization';
@@ -858,8 +860,10 @@ const handleItrFlow = async (
         const updated = await updateFiling(filing.id, { status: nextStatus });
         if (nextStatus === 'AWAITING_BANK_NAME') {
           await sendMessage(
-            `📊 *ITR Filing — FY ${fy} (AY ${ay})*\n\n` +
-            `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n_Type *back* to go to previous step._`
+            `Great! Let's start your ITR filing for *FY ${fy} (AY ${ay})*. 📊\n\n` +
+            `To begin, please provide your bank details for tax refunds.\n\n` +
+            `What is the *Name of your Bank*?\n_e.g., HDFC Bank, SBI, ICICI_\n\n` +
+            `_Type *back* to return to the Main Menu._`
           );
         } else {
           await sendMessage(`👋 Welcome back, *${client.full_name || 'there'}*! Resuming your ITR filing for *FY ${fy}*:`);
@@ -899,7 +903,7 @@ const handleItrFlow = async (
             `• Status: *Active / Completed*` +
             `${expiryInfo}\n\n` +
             `If you need to renew your DSC or make any changes, please contact our team.\n\n` +
-            `_Type *menu* to return to the Main Menu._`
+            `_Reply *1* for ITR Filing, or type *menu* for the Main Menu._`
           );
         } else if (dsc.user_type) {
           const typeStr = dsc.user_type === 'INDIVIDUAL' ? 'Individual' : 'Organization';

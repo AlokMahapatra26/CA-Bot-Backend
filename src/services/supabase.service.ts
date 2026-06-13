@@ -223,7 +223,7 @@ export const createDscApplication = async (clientId: string, companyId: string):
   if (!supabase) return null;
   const { data, error } = await supabase
     .from('dsc_applications')
-    .insert([{ client_id: clientId, company_id: companyId, status: 'AWAITING_TYPE' }])
+    .insert([{ client_id: clientId, company_id: companyId, status: 'AWAITING_TYPE', user_type: null }])
     .select()
     .single();
   if (error) console.error('Error creating DSC application:', error);
