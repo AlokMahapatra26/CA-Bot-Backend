@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { supabase } from './supabase.service';
 import { messageService } from '../providers';
+import cron, { ScheduledTask } from 'node-cron';
 
 interface ExpirySettings {
   enabled: boolean;
@@ -13,7 +14,7 @@ interface ExpirySettings {
 class DscExpiryReminderService {
   private settingsFilePath = path.join(__dirname, '../config/dsc-expiry-settings.json');
   private settings: ExpirySettings = { enabled: false, remindDays: [7, 3, 1], lastRun: null, isTesting: false };
-  private timerId: NodeJS.Timeout | null = null;
+  private cronTask: ScheduledTask | null = null;
 
   async initialize() {
     try {
@@ -22,7 +23,7 @@ class DscExpiryReminderService {
       console.log('DSC Expiry Reminder settings loaded successfully:', this.settings);
       
       if (this.settings.enabled) {
-        this.startScheduler();
+        await this.startScheduler();
       }
     } catch (error) {
       console.warn('Could not read DSC expiry reminder settings, creating default file:', error);
@@ -40,9 +41,14 @@ class DscExpiryReminderService {
   private calculateNextRun(): string | null {
     if (!this.settings.enabled) return null;
     const last = this.settings.lastRun ? new Date(this.settings.lastRun) : new Date();
-    // For normal mode, check every 24 hours. For testing mode, check every 30 seconds.
-    const multiplier = this.settings.isTesting ? 30 * 1000 : 24 * 60 * 60 * 1000;
-    const next = new Date(last.getTime() + multiplier);
+    if (this.settings.isTesting) {
+      return new Date(last.getTime() + 30 * 1000).toISOString();
+    }
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0);
+    if (next.getTime() <= now.getTime()) {
+      next.setDate(next.getDate() + 1);
+    }
     return next.toISOString();
   }
 
@@ -54,28 +60,52 @@ class DscExpiryReminderService {
 
     this.stopScheduler();
     if (enabled) {
-      this.startScheduler();
+      await this.startScheduler();
     }
     console.log(`DSC Expiry Reminder scheduler toggled: enabled=${enabled}, remindDays=[${remindDays.join(',')}], testing=${!!isTesting}`);
     return this.getSettings();
   }
 
-  private startScheduler() {
+  private async startScheduler() {
     this.stopScheduler();
-    const msInterval = this.settings.isTesting ? 30 * 1000 : 24 * 60 * 60 * 1000; // 30s or 24h
-    
-    this.timerId = setInterval(async () => {
-      console.log(`DSC Expiry Reminder scheduler: executing periodic checks (Testing Mode: ${!!this.settings.isTesting})...`);
-      await this.triggerReminders();
-    }, msInterval);
 
-    console.log(`Started background DSC expiry reminder scheduler. Checked every ${this.settings.isTesting ? '30 seconds' : '24 hours'}.`);
+    // 1. Startup check: run immediately if we haven't run today yet (and testing mode is off)
+    if (!this.settings.isTesting) {
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const lastRunStr = this.settings.lastRun ? this.settings.lastRun.split('T')[0] : '';
+      
+      if (todayStr !== lastRunStr) {
+        console.log('DSC Expiry Reminder scheduler: running startup check...');
+        try {
+          await this.triggerReminders();
+        } catch (e) {
+          console.error('Error running DSC Expiry Reminder startup check:', e);
+        }
+      }
+    }
+
+    // 2. Schedule the Cron Job
+    // Normal mode: every day at 10:00 AM ('0 10 * * *')
+    // Testing mode: every 30 seconds ('*/30 * * * * *')
+    const expression = this.settings.isTesting ? '*/30 * * * * *' : '0 10 * * *';
+    
+    this.cronTask = cron.schedule(expression, async () => {
+      console.log(`DSC Expiry Reminder cron execution triggered (Testing Mode: ${!!this.settings.isTesting})...`);
+      try {
+        await this.triggerReminders();
+      } catch (e) {
+        console.error('Error executing DSC Expiry Reminder cron task:', e);
+      }
+    });
+
+    console.log(`Started background DSC expiry reminder scheduler with cron pattern: ${expression}`);
   }
 
   private stopScheduler() {
-    if (this.timerId) {
-      clearInterval(this.timerId);
-      this.timerId = null;
+    if (this.cronTask) {
+      this.cronTask.stop();
+      this.cronTask = null;
     }
   }
 

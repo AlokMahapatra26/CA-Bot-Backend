@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { supabase } from './supabase.service';
 import { messageService } from '../providers';
+import cron, { ScheduledTask } from 'node-cron';
 
 interface ReminderSettings {
   enabled: boolean;
@@ -13,7 +14,7 @@ interface ReminderSettings {
 class ReminderService {
   private settingsFilePath = path.join(__dirname, '../config/reminder-settings.json');
   private settings: ReminderSettings = { enabled: false, intervalHours: 24, lastRun: null, isTesting: false };
-  private timerId: NodeJS.Timeout | null = null;
+  private cronTask: ScheduledTask | null = null;
 
   async initialize() {
     try {
@@ -22,7 +23,7 @@ class ReminderService {
       console.log('Reminder settings loaded successfully:', this.settings);
       
       if (this.settings.enabled) {
-        this.startScheduler();
+        await this.startScheduler();
       }
     } catch (error) {
       console.warn('Could not read reminder settings, creating default file:', error);
@@ -40,9 +41,20 @@ class ReminderService {
   private calculateNextRun(): string | null {
     if (!this.settings.enabled) return null;
     const last = this.settings.lastRun ? new Date(this.settings.lastRun) : new Date();
-    const multiplier = this.settings.isTesting ? 1000 : 60 * 60 * 1000;
-    const next = new Date(last.getTime() + this.settings.intervalHours * multiplier);
-    return next.toISOString();
+    if (this.settings.isTesting) {
+      const seconds = this.settings.intervalHours || 30;
+      return new Date(last.getTime() + seconds * 1000).toISOString();
+    }
+    const hours = this.settings.intervalHours || 24;
+    if (hours >= 24) {
+      const now = new Date();
+      const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0);
+      if (next.getTime() <= now.getTime()) {
+        next.setDate(next.getDate() + 1);
+      }
+      return next.toISOString();
+    }
+    return new Date(last.getTime() + hours * 60 * 60 * 1000).toISOString();
   }
 
   async toggle(enabled: boolean, intervalHours: number, isTesting?: boolean) {
@@ -53,31 +65,63 @@ class ReminderService {
 
     this.stopScheduler();
     if (enabled) {
-      this.startScheduler();
+      await this.startScheduler();
     }
     console.log(`Reminder scheduler toggled: enabled=${enabled}, interval=${intervalHours}${isTesting ? 's' : 'h'} (Testing Mode: ${!!isTesting})`);
     return this.getSettings();
   }
 
-  private startScheduler() {
+  private async startScheduler() {
     this.stopScheduler();
-    const msInterval = this.settings.isTesting
-      ? this.settings.intervalHours * 1000
-      : this.settings.intervalHours * 60 * 60 * 1000;
-    
-    // Set up standard recurring check
-    this.timerId = setInterval(async () => {
-      console.log(`Reminder scheduler: executing periodic document checks (Testing Mode: ${!!this.settings.isTesting})...`);
-      await this.triggerReminders();
-    }, msInterval);
 
-    console.log(`Started background reminder scheduler. Checked every ${this.settings.intervalHours} ${this.settings.isTesting ? 'seconds' : 'hours'}.`);
+    // 1. Startup check: run immediately if we missed our threshold
+    if (!this.settings.isTesting) {
+      const now = new Date();
+      const last = this.settings.lastRun ? new Date(this.settings.lastRun) : null;
+      const msPassed = last ? now.getTime() - last.getTime() : Infinity;
+      const msThreshold = this.settings.intervalHours * 60 * 60 * 1000;
+      
+      if (msPassed >= msThreshold) {
+        console.log('Reminder scheduler: running startup check...');
+        try {
+          await this.triggerReminders();
+        } catch (e) {
+          console.error('Error running Reminder startup check:', e);
+        }
+      }
+    }
+
+    // 2. Schedule the Cron Job dynamically based on intervalHours
+    const expression = this.getCronExpression();
+    
+    this.cronTask = cron.schedule(expression, async () => {
+      console.log(`Reminder cron execution triggered (Testing Mode: ${!!this.settings.isTesting})...`);
+      try {
+        await this.triggerReminders();
+      } catch (e) {
+        console.error('Error executing Reminder cron task:', e);
+      }
+    });
+
+    console.log(`Started background reminder scheduler with cron pattern: ${expression}`);
+  }
+
+  private getCronExpression(): string {
+    if (this.settings.isTesting) {
+      const seconds = this.settings.intervalHours || 30;
+      return `*/${seconds} * * * * *`;
+    }
+    const hours = this.settings.intervalHours || 24;
+    if (hours >= 24) {
+      return '0 10 * * *'; // Run daily at 10:00 AM
+    }
+    return `0 */${hours} * * *`; // Run every X hours
   }
 
   private stopScheduler() {
-    if (this.timerId) {
-      clearInterval(this.timerId);
-      this.timerId = null;
+    if (this.cronTask) {
+      this.cronTask.stop();
+      this.cronTask = null;
     }
   }
 
