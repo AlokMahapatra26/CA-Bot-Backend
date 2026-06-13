@@ -385,15 +385,39 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         await sendMessage('⚠️ Failed to start DSC Application. Please try again.');
         return;
       }
-      await updateDscApplication(activeDsc.id, { status: 'AWAITING_TYPE' });
-      await sendMessage(
-        `🔑 *DSC Application Type*\n\n` +
-        `Please select the type of DSC:\n` +
-        `*1* — Individual\n` +
-        `*2* — Organization\n\n` +
-        `Reply *1* or *2* to select.\n\n` +
-        `_Type *back* to return to the Main Menu._`
-      );
+      
+      if (activeDsc.status === 'COMPLETED') {
+        let expiryInfo = '';
+        if (activeDsc.expiry_date) {
+          expiryInfo = `\n📅 *Expiry Date:* ${activeDsc.expiry_date}`;
+        }
+        const typeStr = activeDsc.user_type === 'INDIVIDUAL' ? 'Individual' : 'Organization';
+        await sendMessage(
+          `✅ *Your DSC is Active*\n\n` +
+          `• Type: *${typeStr}*\n` +
+          `• Status: *Active / Completed*` +
+          `${expiryInfo}\n\n` +
+          `If you need to renew your DSC or make any changes, please contact our team.`
+        );
+      } else if (activeDsc.user_type) {
+        const typeStr = activeDsc.user_type === 'INDIVIDUAL' ? 'Individual' : 'Organization';
+        await sendMessage(
+          `🔑 *DSC Application — ${typeStr}*\n\n` +
+          `Your request is registered.\n\n` +
+          `To complete the process, please record your *Video verification* using the link sent by our team.\n\n` +
+          `_We will notify you once it's done!_`
+        );
+      } else {
+        await updateDscApplication(activeDsc.id, { status: 'AWAITING_TYPE' });
+        await sendMessage(
+          `🔑 *DSC Application Type*\n\n` +
+          `Please select the type of DSC:\n` +
+          `*1* — Individual\n` +
+          `*2* — Organization\n\n` +
+          `Reply *1* or *2* to select.\n\n` +
+          `_Type *back* to return to the Main Menu._`
+        );
+      }
     } else {
       await sendMessage(
         `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
@@ -790,15 +814,39 @@ const handleItrFlow = async (
           await sendMessage('⚠️ Failed to start DSC Application. Please try again.');
           return;
         }
-        await updateDscApplication(dsc.id, { status: 'AWAITING_TYPE' });
-        await sendMessage(
-          `🔑 *DSC Application Type*\n\n` +
-          `Please select the type of DSC:\n` +
-          `*1* — Individual\n` +
-          `*2* — Organization\n\n` +
-          `Reply *1* or *2* to select.\n\n` +
-          `_Type *back* to return to the Main Menu._`
-        );
+        
+        if (dsc.status === 'COMPLETED') {
+          let expiryInfo = '';
+          if (dsc.expiry_date) {
+            expiryInfo = `\n📅 *Expiry Date:* ${dsc.expiry_date}`;
+          }
+          const typeStr = dsc.user_type === 'INDIVIDUAL' ? 'Individual' : 'Organization';
+          await sendMessage(
+            `✅ *Your DSC is Active*\n\n` +
+            `• Type: *${typeStr}*\n` +
+            `• Status: *Active / Completed*` +
+            `${expiryInfo}\n\n` +
+            `If you need to renew your DSC or make any changes, please contact our team.`
+          );
+        } else if (dsc.user_type) {
+          const typeStr = dsc.user_type === 'INDIVIDUAL' ? 'Individual' : 'Organization';
+          await sendMessage(
+            `🔑 *DSC Application — ${typeStr}*\n\n` +
+            `Your request is registered.\n\n` +
+            `To complete the process, please record your *Video verification* using the link sent by our team.\n\n` +
+            `_We will notify you once it's done!_`
+          );
+        } else {
+          await updateDscApplication(dsc.id, { status: 'AWAITING_TYPE' });
+          await sendMessage(
+            `🔑 *DSC Application Type*\n\n` +
+            `Please select the type of DSC:\n` +
+            `*1* — Individual\n` +
+            `*2* — Organization\n\n` +
+            `Reply *1* or *2* to select.\n\n` +
+            `_Type *back* to return to the Main Menu._`
+          );
+        }
       } else {
         await sendMessage(
           `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
