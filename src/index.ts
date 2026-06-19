@@ -32,7 +32,30 @@ app.get('/', (req, res) => {
 // ── Bot Status (QR + connection state) ───────────────────────────────────────
 app.get('/api/bot/status', (req, res) => {
   const status = messageService.getStatus();
-  res.json(status);
+  res.json({
+    ...status,
+    // Add provider name to status so UI knows which mode is active
+    provider: messageService.getProviderName()
+  });
+});
+
+// ── Bot Provider Settings (Baileys vs Meta Cloud API) ───────────────────────
+app.get('/api/bot/provider', (req, res) => {
+  res.json({ success: true, provider: messageService.getProviderName() });
+});
+
+app.post('/api/bot/provider', async (req, res) => {
+  const { provider } = req.body;
+  if (provider !== 'baileys' && provider !== 'cloud') {
+    return res.status(400).json({ error: 'Invalid provider parameter. Must be "baileys" or "cloud"' });
+  }
+  try {
+    await messageService.switchProvider(provider);
+    res.json({ success: true, provider: messageService.getProviderName() });
+  } catch (error: any) {
+    console.error('Failed to switch provider:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // ── Logout / Disconnect bot ───────────────────────────────────────────────────

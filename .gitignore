@@ -56,3 +56,6 @@ uploads/
 
 # TypeScript
 *.tsbuildinfo
+
+# Runtime configurations / settings
+src/config/*-settings.json
