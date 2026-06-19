@@ -125,6 +125,17 @@ export class DynamicProvider implements IWhatsAppProvider {
   async logout(): Promise<void> {
     await this.activeProvider.logout();
   }
+
+  /**
+   * Forwards incoming webhook payloads from Express to the active provider
+   */
+  async handleWebhook(body: any): Promise<void> {
+    if (typeof (this.activeProvider as any).handleWebhook === 'function') {
+      await (this.activeProvider as any).handleWebhook(body);
+    } else {
+      console.warn(`[DynamicProvider] Active provider ${this.currentName} does not support webhook payloads.`);
+    }
+  }
 }
 
 /** Singleton provider instance — use this everywhere in the app */

@@ -68,6 +68,44 @@ app.post('/api/bot/logout', async (req, res) => {
   }
 });
 
+// ── Meta Webhook Verification (GET /webhook) ─────────────────────────────────
+app.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  const localVerifyToken = config.META_VERIFY_TOKEN || 'CA_BOT_VERIFY_TOKEN';
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === localVerifyToken) {
+      console.log('[Webhook] Handshake verification successful');
+      return res.status(200).send(challenge);
+    } else {
+      console.warn('[Webhook] Handshake verification failed: token mismatch');
+      return res.sendStatus(403);
+    }
+  }
+  return res.sendStatus(400);
+});
+
+// ── Meta Webhook Messages Event Handler (POST /webhook) ─────────────────────
+app.post('/webhook', async (req, res) => {
+  const body = req.body;
+
+  // Respond immediately so Meta knows we got it
+  res.status(200).send('EVENT_RECEIVED');
+
+  if (body.object === 'whatsapp_business_account') {
+    try {
+      if (messageService.getProviderName() === 'cloud') {
+        await messageService.handleWebhook(body);
+      }
+    } catch (error: any) {
+      console.error('[Webhook] Error executing handleWebhook:', error.message);
+    }
+  }
+});
+
 // ── Send message (called by Next.js server actions) ───────────────────────────
 app.post('/api/send-message', async (req, res) => {
   const { jid, text, documentUrl, fileName } = req.body;
