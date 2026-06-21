@@ -8,7 +8,8 @@ export const config = {
   SUPABASE_KEY: process.env.SUPABASE_KEY || '',
   /** Which WhatsApp provider to use: 'baileys' (default) or 'cloud' */
   WHATSAPP_PROVIDER: (process.env.WHATSAPP_PROVIDER || 'baileys') as 'baileys' | 'cloud',
-  META_ACCESS_TOKEN: process.env.META_ACCESS_TOKEN || '',
-  META_PHONE_NUMBER_ID: process.env.META_PHONE_NUMBER_ID || '',
-  META_VERIFY_TOKEN: process.env.META_VERIFY_TOKEN || '',
+  META_ACCESS_TOKEN: (process.env.META_ACCESS_TOKEN || '').trim(),
+  META_PHONE_NUMBER_ID: (process.env.META_PHONE_NUMBER_ID || '').trim(),
+  META_VERIFY_TOKEN: (process.env.META_VERIFY_TOKEN || '').trim(),
 };
+

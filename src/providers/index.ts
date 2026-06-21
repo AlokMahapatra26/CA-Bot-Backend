@@ -46,6 +46,11 @@ export class MetaProvider implements IWhatsAppProvider {
     await this.activeProvider.sendDocument(to, documentUrl, fileName, caption);
   }
 
+  async sendButtons(to: string, text: string, buttons: { id: string; title: string }[]): Promise<void> {
+    await this.activeProvider.sendButtons(to, text, buttons);
+  }
+
+
   async downloadMedia(rawMessage: unknown, rawMessageContent: unknown): Promise<DownloadedMedia | null> {
     return await this.activeProvider.downloadMedia(rawMessage, rawMessageContent);
   }

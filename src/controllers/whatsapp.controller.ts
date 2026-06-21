@@ -34,8 +34,23 @@ const isGreeting = (text: string): boolean => {
   return greetings.includes(text.toLowerCase().trim());
 };
 
+const sendMainMenu = async (
+  senderJid: string,
+  fullName: string,
+  fy: string,
+  prefixText = ''
+) => {
+  const text = `${prefixText}👋 Hi *${fullName}*! What service do you need?`;
+  const buttons = [
+    { id: 'menu_itr', title: '📊 ITR Filing' },
+    { id: 'menu_dsc', title: '🔑 DSC Application' }
+  ];
+  await messageService.sendButtons(senderJid, text, buttons);
+};
+
 // Per-JID lock to prevent race conditions from concurrent message deliveries
 const processingLocks = new Map<string, Promise<void>>();
+
 
 // Session timeout tracking & Menu Override
 const lastInteractionTimestamps = new Map<string, number>();
@@ -155,14 +170,8 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         
         if (dsc.status === 'AWAITING_TYPE') {
           await supabase.from('dsc_applications').delete().eq('id', dsc.id);
-          await sendMessage('↩️ *Returning to Main Menu...*');
           const { fy } = getFinancialAndAssessmentYear();
-          await sendMessage(
-            `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
-            `*1* — 📊 ITR Filing for FY ${fy}\n` +
-            `*2* — 🔑 DSC Application\n\n` +
-            `Reply with the service number (1 or 2).`
-          );
+          await sendMainMenu(senderJid, client.full_name || 'there', fy, `↩️ *Returning to Main Menu...*\n\n`);
           return;
         } else if (dsc.status === 'AWAITING_VIDEO_VERIFICATION') {
           prevDscStatus = 'AWAITING_TYPE';
@@ -311,12 +320,7 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
 
     if (isMenuKeyword) {
       sessionMenuOverride.add(senderJid);
-      await sendMessage(
-        `👋 Hi *${client.full_name || 'there'}*! What service do you need?\n\n` +
-        `*1* — 📊 ITR Filing for FY ${fy}\n` +
-        `*2* — 🔑 DSC Application\n\n` +
-        `Reply with the service number (1 or 2).`
-      );
+      await sendMainMenu(senderJid, client.full_name || 'there', fy);
       return;
     }
 
@@ -327,13 +331,11 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         
       if (hasActiveFlow) {
         sessionMenuOverride.add(senderJid);
-        await sendMessage(
-          `⏳ *Session Timeout*\n\n` +
-          `Your session has timed out due to 5 minutes of inactivity. Returning to the Main Menu...\n\n` +
-          `👋 Hi *${client.full_name || 'there'}*! What service do you need?\n\n` +
-          `*1* — 📊 ITR Filing for FY ${fy}\n` +
-          `*2* — 🔑 DSC Application\n\n` +
-          `Reply with the service number (1 or 2).`
+        await sendMainMenu(
+          senderJid,
+          client.full_name || 'there',
+          fy,
+          `⏳ *Session Timeout*\n\nYour session has timed out due to 5 minutes of inactivity. Returning to the Main Menu...\n\n`
         );
         return;
       }
@@ -483,22 +485,17 @@ export const handleIncomingMessage = async (message: IncomingMessage) => {
         );
       } else {
         await updateDscApplication(activeDsc.id, { status: 'AWAITING_TYPE' });
-        await sendMessage(
-          `🔑 *DSC Application Type*\n\n` +
-          `Please select the type of DSC:\n` +
-          `*1* — Individual\n` +
-          `*2* — Organization\n\n` +
-          `Reply *1* or *2* to select.\n\n` +
-          `_Type *back* to return to the Main Menu._`
+        await messageService.sendButtons(
+          senderJid,
+          `🔑 *DSC Application Type*\n\nPlease select the type of DSC:`,
+          [
+            { id: 'dsc_individual', title: 'Individual' },
+            { id: 'dsc_org', title: 'Organization' }
+          ]
         );
       }
     } else {
-      await sendMessage(
-        `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
-        `*1* — 📊 ITR Filing for FY ${fy}\n` +
-        `*2* — 🔑 DSC Application\n\n` +
-        `Reply with the service number (1 or 2).`
-      );
+      await sendMainMenu(senderJid, client.full_name || 'there', fy);
     }
 
   } catch (error) {
@@ -555,12 +552,11 @@ const routeToNextOnboardingStep = async (
         await sendMessage(`👋 Welcome back, *${name}*! Resuming your ITR filing for *FY ${fy}*:`);
         await handleItrFlow(updatedClient, filing, '', false, null, fy, ay, name, sendMessage);
       } else {
-        await sendMessage(
-          `🎉 *Registration Complete!*\n\n` +
-          `👋 Hi *${name}*! What service do you need?\n\n` +
-          `*1* — 📊 ITR Filing for FY ${fy}\n` +
-          `*2* — 🔑 DSC Application\n\n` +
-          `Reply with the service number (1 or 2).`
+        await sendMainMenu(
+          updatedClient.whatsapp_jid!,
+          name,
+          fy,
+          `🎉 *Registration Complete!*\n\n`
         );
       }
     } else {
@@ -916,22 +912,17 @@ const handleItrFlow = async (
           );
         } else {
           await updateDscApplication(dsc.id, { status: 'AWAITING_TYPE' });
-          await sendMessage(
-            `🔑 *DSC Application Type*\n\n` +
-            `Please select the type of DSC:\n` +
-            `*1* — Individual\n` +
-            `*2* — Organization\n\n` +
-            `Reply *1* or *2* to select.\n\n` +
-            `_Type *back* to return to the Main Menu._`
+          await messageService.sendButtons(
+            client.whatsapp_jid,
+            `🔑 *DSC Application Type*\n\nPlease select the type of DSC:`,
+            [
+              { id: 'dsc_individual', title: 'Individual' },
+              { id: 'dsc_org', title: 'Organization' }
+            ]
           );
         }
       } else {
-        await sendMessage(
-          `👋 Hi *${client.full_name}*! What service do you need?\n\n` +
-          `*1* — 📊 ITR Filing for FY ${fy}\n` +
-          `*2* — 🔑 DSC Application\n\n` +
-          `Reply with the service number (1 or 2).`
-        );
+        await sendMainMenu(client.whatsapp_jid, client.full_name || 'there', fy);
       }
       break;
     }
@@ -1072,24 +1063,30 @@ const handleItrFlow = async (
     case 'AWAITING_INCOME_SOURCE': {
       const choice = incomingMessage.trim();
       if (!choice) {
-        await sendMessage(
-          `*Select your income source:*\n\n` +
-          `*1* — 👔 Salaried\n` +
-          `*2* — 💼 Business / Freelancer\n\n` +
-          `_Type *back* to go to previous step._`
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `*Select your income source:*`,
+          [
+            { id: 'inc_salaried', title: '👔 Salaried' },
+            { id: 'inc_business', title: '💼 Business' }
+          ]
         );
         break;
       }
-      if (choice === '1') {
+      if (choice === '1' || choice.toLowerCase().includes('salaried') || choice.toLowerCase().includes('👔')) {
         await updateFiling(filing.id, { income_source: 'SALARIED', status: 'AWAITING_FORM16' });
         await sendMessage(`👔 Upload your *Form 16* 📎\n_PDF or photo._\n\n_Type *back* to go to previous step._`);
-      } else if (choice === '2') {
+      } else if (choice === '2' || choice.toLowerCase().includes('business') || choice.toLowerCase().includes('💼')) {
         await updateFiling(filing.id, { income_source: 'BUSINESS', status: 'AWAITING_BANK_STATEMENT' });
         await sendMessage(`💼 Upload your *Bank Statement* for FY ${fy} 📎\n_PDF or photo. Upload more or reply *DONE* when finished._\n\n_Type *back* to go to previous step._`);
       } else {
-        await sendMessage(
-          `⚠️ Reply 1 or 2:\n\n` +
-          `*1* — Salaried\n*2* — Business\n\n_Type *back* to go to previous step._`
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `⚠️ Invalid choice. *Select your income source:*`,
+          [
+            { id: 'inc_salaried', title: '👔 Salaried' },
+            { id: 'inc_business', title: '💼 Business' }
+          ]
         );
       }
       break;
@@ -1099,11 +1096,13 @@ const handleItrFlow = async (
     case 'AWAITING_FORM16': {
       if (mediaUrl) {
         await updateFiling(filing.id, { form16_media_url: mediaUrl, status: 'AWAITING_PROPERTY_SALE_DECISION' });
-        await sendMessage(
-          `✅ Form 16 received!\n\n` +
-          `Any *property bought/sold* this year?\n\n` +
-          `*1* — Yes\n` +
-          `*2* — No`
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `✅ Form 16 received!\n\n🏠 Any *property bought/sold* this year?`,
+          [
+            { id: 'prop_yes', title: 'Yes' },
+            { id: 'prop_no', title: 'No' }
+          ]
         );
       } else if (!incomingMessage) {
         await sendMessage(`👔 Upload your *Form 16* 📎\n_PDF or photo._\n\n_Type *back* to go to previous step._`);
@@ -1128,7 +1127,14 @@ const handleItrFlow = async (
           return;
         }
         await updateFiling(filing.id, { status: 'AWAITING_PROPERTY_SALE_DECISION' });
-        await sendMessage(`Any *property bought/sold* this year?\n\n*1* — Yes\n*2* — No`);
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `Any *property bought/sold* this year?`,
+          [
+            { id: 'prop_yes', title: 'Yes' },
+            { id: 'prop_no', title: 'No' }
+          ]
+        );
       } else if (!incomingMessage) {
         await sendMessage(`💼 Upload your *Bank Statement* for FY ${fy} 📎\n_PDF or photo. Upload more or reply *DONE* when finished._\n\n_Type *back* to go to previous step._`);
       } else {
@@ -1152,7 +1158,14 @@ const handleItrFlow = async (
           return;
         }
         await updateFiling(filing.id, { status: 'AWAITING_PROPERTY_SALE_DECISION' });
-        await sendMessage(`Any *property bought/sold* this year?\n\n*1* — Yes\n*2* — No`);
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `Any *property bought/sold* this year?`,
+          [
+            { id: 'prop_yes', title: 'Yes' },
+            { id: 'prop_no', title: 'No' }
+          ]
+        );
       } else if (!incomingMessage) {
         await sendMessage(`📈 Upload your *Capital Gains Statement* 📎\n_Upload more or reply *DONE* when finished._\n\n_Type *back* to go to previous step._`);
       } else {
@@ -1176,7 +1189,14 @@ const handleItrFlow = async (
           return;
         }
         await updateFiling(filing.id, { status: 'AWAITING_OTHER_DOCS_DECISION' });
-        await sendMessage(`Any *other tax documents* to share?\n\n*1* — Yes\n*2* — No, I'm done`);
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `Any *other tax documents* to share?`,
+          [
+            { id: 'other_docs_yes', title: 'Yes' },
+            { id: 'other_docs_no', title: "No, I'm done" }
+          ]
+        );
       } else if (!incomingMessage) {
         await sendMessage(`🏠 Upload your *Property Sale/Purchase Deeds* 📎\n_Upload more or reply *DONE* when finished._\n\n_Type *back* to go to previous step._`);
       } else {
@@ -1188,21 +1208,37 @@ const handleItrFlow = async (
     // ── PROPERTY DECISION ──────────────────────────────────────────
     case 'AWAITING_PROPERTY_SALE_DECISION': {
       const choice = incomingMessage.trim();
-      if (choice === '1') {
+      if (choice === '1' || choice.toLowerCase().includes('yes')) {
         await updateFiling(filing.id, { status: 'AWAITING_PROPERTY_DOCS' });
         await sendMessage(`🏠 Upload your *Property Sale/Purchase Deeds* 📎\n_Upload more or reply *DONE* when finished._`);
-      } else if (choice === '2') {
+      } else if (choice === '2' || choice.toLowerCase().includes('no')) {
         await updateFiling(filing.id, { status: 'AWAITING_OTHER_DOCS_DECISION' });
-        await sendMessage(`Any *other tax documents* to share?\n\n*1* — Yes\n*2* — No, I'm done`);
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `Any *other tax documents* to share?`,
+          [
+            { id: 'other_docs_yes', title: 'Yes' },
+            { id: 'other_docs_no', title: "No, I'm done" }
+          ]
+        );
       } else if (!incomingMessage) {
-        await sendMessage(
-          `🏠 Any *property bought/sold* this year?\n\n` +
-          `*1* — Yes\n` +
-          `*2* — No\n\n` +
-          `_Type *back* to go to previous step._`
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `🏠 Any *property bought/sold* this year?`,
+          [
+            { id: 'prop_yes', title: 'Yes' },
+            { id: 'prop_no', title: 'No' }
+          ]
         );
       } else {
-        await sendMessage(`⚠️ Reply *1* (Yes) or *2* (No).`);
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `⚠️ Invalid choice. 🏠 Any *property bought/sold* this year?`,
+          [
+            { id: 'prop_yes', title: 'Yes' },
+            { id: 'prop_no', title: 'No' }
+          ]
+        );
       }
       break;
     }
@@ -1210,24 +1246,33 @@ const handleItrFlow = async (
     // ── OTHER DOCUMENTS DECISION ────────────────────────────────────
     case 'AWAITING_OTHER_DOCS_DECISION': {
       const choice = incomingMessage.trim();
-      if (choice === '1') {
+      if (choice === '1' || choice.toLowerCase().includes('yes')) {
         await updateFiling(filing.id, { status: 'AWAITING_OTHER_DOCS' });
         await sendMessage(`📎 Upload your other tax docs. Send more or reply *DONE* when finished.`);
-      } else if (choice === '2') {
+      } else if (choice === '2' || choice.toLowerCase().includes('no') || choice.toLowerCase().includes('done')) {
         await updateFiling(filing.id, { status: 'COMPLETED' });
         await sendMessage(
           `🎉 *All done!* Your ITR filing for *FY ${filing.fy_year}* has been submitted.\n\n` +
           `Our CA team will review and get back to you. Thank you! 🙏`
         );
       } else if (!incomingMessage) {
-        await sendMessage(
-          `📎 Any *other tax documents* to share?\n\n` +
-          `*1* — Yes\n` +
-          `*2* — No, I'm done\n\n` +
-          `_Type *back* to go to previous step._`
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `📎 Any *other tax documents* to share?`,
+          [
+            { id: 'other_docs_yes', title: 'Yes' },
+            { id: 'other_docs_no', title: "No, I'm done" }
+          ]
         );
       } else {
-        await sendMessage(`⚠️ Reply *1* (Yes) or *2* (No, I'm done).`);
+        await messageService.sendButtons(
+          client.whatsapp_jid,
+          `⚠️ Invalid choice. 📎 Any *other tax documents* to share?`,
+          [
+            { id: 'other_docs_yes', title: 'Yes' },
+            { id: 'other_docs_no', title: "No, I'm done" }
+          ]
+        );
       }
       break;
     }

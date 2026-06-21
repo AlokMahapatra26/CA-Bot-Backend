@@ -128,6 +128,61 @@ export class CloudProvider implements IWhatsAppProvider {
   }
 
   /**
+   * Send interactive quick reply buttons to a WhatsApp recipient.
+   */
+  async sendButtons(
+    to: string,
+    text: string,
+    buttons: { id: string; title: string }[]
+  ): Promise<void> {
+    if (!this.apiToken || !this.phoneNumberId) {
+      throw new Error('[CloudProvider] API credentials are not configured.');
+    }
+
+    const cleanPhone = to.split('@')[0].replace('+', '');
+    const url = `https://graph.facebook.com/v25.0/${this.phoneNumberId}/messages`;
+
+    console.log(`[CloudProvider] Sending interactive buttons to ${cleanPhone}...`);
+
+    const formattedButtons = buttons.slice(0, 3).map((btn) => ({
+      type: 'reply',
+      reply: {
+        id: btn.id,
+        title: btn.title,
+      },
+    }));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: {
+            text: text,
+          },
+          action: {
+            buttons: formattedButtons,
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`[CloudProvider] Send buttons failed: ${response.statusText}. Details: ${errorText}`);
+    }
+  }
+
+
+  /**
    * Download media attachments using Meta's media download flow.
    */
   async downloadMedia(

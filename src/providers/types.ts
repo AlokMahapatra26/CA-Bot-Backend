@@ -101,6 +101,16 @@ export interface IWhatsAppProvider {
   sendDocument(to: string, documentUrl: string, fileName: string, caption?: string): Promise<void>;
 
   /**
+   * Send interactive quick reply buttons (up to 3) to a WhatsApp recipient.
+   *
+   * @param to - The recipient's JID
+   * @param text - The message body text
+   * @param buttons - Array of button objects containing id and title
+   */
+  sendButtons(to: string, text: string, buttons: { id: string; title: string }[]): Promise<void>;
+
+
+  /**
    * Download media (image/document) from an incoming message.
    *
    * @param rawMessage - The raw, provider-specific message object
