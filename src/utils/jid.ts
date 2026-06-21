@@ -50,11 +50,10 @@ export const toStorageKey = (senderJid: string): string => {
 
 import fs from 'fs';
 import path from 'path';
-
 /**
  * Resolves the real phone number (digits only, e.g. "918849561649") from a JID.
  * Handles standard JIDs directly.
- * Handles LIDs by checking the raw message key.senderPn or the Baileys auth local mapping files.
+ * Handles LIDs by checking the raw message key.senderPn.
  */
 export const resolvePhoneNumber = (jid: string, rawMessage?: any): string | null => {
   if (!jid) return null;
@@ -71,21 +70,6 @@ export const resolvePhoneNumber = (jid: string, rawMessage?: any): string | null
     if (pn && /^\d+$/.test(pn)) {
       return pn;
     }
-  }
-
-  // 3. Try reading from Baileys auth state mapping file
-  try {
-    const lidNumber = jid.split('@')[0];
-    const mappingPath = path.resolve('auth_info_baileys', `lid-mapping-${lidNumber}_reverse.json`);
-    if (fs.existsSync(mappingPath)) {
-      const content = fs.readFileSync(mappingPath, 'utf-8');
-      const pn = JSON.parse(content); // content is JSON string e.g. "918849561649"
-      if (pn && typeof pn === 'string') {
-        return pn.replace(/\D/g, '');
-      }
-    }
-  } catch (err) {
-    console.error(`[resolvePhoneNumber] Error reading mapping file for JID ${jid}:`, err);
   }
 
   return null;

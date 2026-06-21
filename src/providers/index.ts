@@ -1,106 +1,38 @@
-/**
- * ─────────────────────────────────────────────────────────────────
- * WhatsApp Provider Factory & Singleton (Dynamic)
- * ─────────────────────────────────────────────────────────────────
- *
- * This module manages the active WhatsApp provider dynamically, allowing
- * administrators to switch between direct WhatsApp connection (Baileys)
- * and the official Meta Cloud API at runtime.
- */
-
-import * as fs from 'fs/promises';
-import * as path from 'path';
 import type { IWhatsAppProvider, IncomingMessage, ConnectionStatus, MessageHandler, DownloadedMedia } from './types';
-import { BaileysProvider } from './baileys.provider';
 import { CloudProvider } from './cloud.provider';
 
-export class DynamicProvider implements IWhatsAppProvider {
-  private activeProvider: IWhatsAppProvider;
-  private currentName: 'baileys' | 'cloud' = 'baileys';
+export class MetaProvider implements IWhatsAppProvider {
+  private activeProvider: CloudProvider;
   private onMessageCallback: MessageHandler | null = null;
-  private settingsFilePath = path.join(__dirname, '../config/provider-settings.json');
 
   constructor() {
-    // Initial default provider (will be updated during initialize)
-    this.activeProvider = new BaileysProvider();
+    this.activeProvider = new CloudProvider();
   }
 
   /**
-   * Initialize the dynamic provider. Loads the last saved setting
-   * and initializes the corresponding active provider.
+   * Initialize the Meta Cloud provider.
    */
   async initialize(onMessage: MessageHandler): Promise<void> {
     this.onMessageCallback = onMessage;
-
-    try {
-      const data = await fs.readFile(this.settingsFilePath, 'utf8');
-      const settings = JSON.parse(data);
-      if (settings.provider === 'baileys' || settings.provider === 'cloud') {
-        this.currentName = settings.provider;
-      }
-    } catch {
-      // If config doesn't exist, create it with default
-      await this.saveSettings();
-    }
-
-    this.activeProvider = this.instantiateProvider(this.currentName);
-    console.log(`[DynamicProvider] Initializing active provider: ${this.currentName}`);
+    console.log(`[MetaProvider] Initializing official Meta Cloud API provider`);
     
     try {
       await this.activeProvider.initialize(this.onMessageCallback);
     } catch (e: any) {
-      console.error(`[DynamicProvider] Error during initial active provider initialization:`, e.message);
+      console.error(`[MetaProvider] Error during active provider initialization:`, e.message);
     }
   }
 
-  private instantiateProvider(name: 'baileys' | 'cloud'): IWhatsAppProvider {
-    if (name === 'cloud') {
-      return new CloudProvider();
-    }
-    return new BaileysProvider();
-  }
-
-  private async saveSettings() {
-    try {
-      await fs.mkdir(path.dirname(this.settingsFilePath), { recursive: true });
-      await fs.writeFile(this.settingsFilePath, JSON.stringify({ provider: this.currentName }, null, 2), 'utf8');
-    } catch (error) {
-      console.error('[DynamicProvider] Failed to save provider settings file:', error);
-    }
-  }
-
-  getProviderName(): 'baileys' | 'cloud' {
-    return this.currentName;
+  getProviderName(): 'cloud' {
+    return 'cloud';
   }
 
   /**
-   * Switches the active provider dynamically at runtime.
+   * Switching is no longer supported since Baileys is removed.
    */
   async switchProvider(newName: 'baileys' | 'cloud'): Promise<void> {
-    if (this.currentName === newName) return;
-
-    console.log(`[DynamicProvider] Switching provider from ${this.currentName} to ${newName}`);
-
-    // 1. Logout/disconnect the current provider to free resources
-    try {
-      await this.activeProvider.logout();
-    } catch (err: any) {
-      console.warn(`[DynamicProvider] Warning during old provider logout:`, err.message);
-    }
-
-    // 2. Load and save new settings
-    this.currentName = newName;
-    await this.saveSettings();
-    this.activeProvider = this.instantiateProvider(newName);
-
-    // 3. Initialize the new provider
-    if (this.onMessageCallback) {
-      console.log(`[DynamicProvider] Initializing new active provider: ${newName}`);
-      try {
-        await this.activeProvider.initialize(this.onMessageCallback);
-      } catch (err: any) {
-        console.error(`[DynamicProvider] Error during active provider initialization:`, err.message);
-      }
+    if (newName === 'baileys') {
+      throw new Error('[MetaProvider] Baileys (Web Scan) is no longer available on this system.');
     }
   }
 
@@ -130,16 +62,12 @@ export class DynamicProvider implements IWhatsAppProvider {
    * Forwards incoming webhook payloads from Express to the active provider
    */
   async handleWebhook(body: any): Promise<void> {
-    if (typeof (this.activeProvider as any).handleWebhook === 'function') {
-      await (this.activeProvider as any).handleWebhook(body);
-    } else {
-      console.warn(`[DynamicProvider] Active provider ${this.currentName} does not support webhook payloads.`);
-    }
+    await this.activeProvider.handleWebhook(body);
   }
 }
 
 /** Singleton provider instance — use this everywhere in the app */
-export const messageService: DynamicProvider = new DynamicProvider();
+export const messageService = new MetaProvider();
 
 // Re-export types for convenience
 export type { IWhatsAppProvider, IncomingMessage, ConnectionStatus, MessageHandler, DownloadedMedia } from './types';
