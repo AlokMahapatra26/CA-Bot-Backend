@@ -134,6 +134,30 @@ app.post('/api/send-message', async (req, res) => {
   }
 });
 
+// Helper function to run the throttled broadcast in the background
+async function runThrottledBroadcast(targetClients: { whatsapp_jid: string | null }[], text: string) {
+  console.log(`[Broadcast] Starting background broadcast to ${targetClients.length} clients...`);
+  let successCount = 0;
+  let failCount = 0;
+  const delayMs = 200; // 5 messages per second (1000ms / 5 = 200ms)
+
+  for (const client of targetClients) {
+    if (client.whatsapp_jid) {
+      try {
+        await messageService.sendText(client.whatsapp_jid, text);
+        successCount++;
+      } catch (err) {
+        console.error(`[Broadcast] Failed to send to ${client.whatsapp_jid}:`, err);
+        failCount++;
+      }
+      // Wait for 200ms throttle delay before sending the next message
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  console.log(`[Broadcast] Background broadcast completed. Total success: ${successCount}, Total failed: ${failCount}`);
+}
+
 // ── Broadcast message to all registered or specific clients ───────────────────
 app.post('/api/broadcast-message', async (req, res) => {
   const { text, jids } = req.body;
@@ -169,30 +193,28 @@ app.post('/api/broadcast-message', async (req, res) => {
       targetClients = data || [];
     }
 
+    // Filter out items without valid whatsapp_jids
+    targetClients = targetClients.filter(client => client.whatsapp_jid);
+
     if (!targetClients || targetClients.length === 0) {
-      return res.json({ success: true, count: 0, message: 'No clients to broadcast' });
+      return res.json({ success: true, count: 0, failed: 0, message: 'No clients to broadcast' });
     }
 
-    // 2. Loop through clients and send message
-    let successCount = 0;
-    let failCount = 0;
+    // Respond immediately to prevent HTTP gateway timeout on Render/load-balancers
+    res.json({ 
+      success: true, 
+      count: targetClients.length, 
+      failed: 0, 
+      message: 'Broadcast initiated successfully in the background.' 
+    });
 
-    for (const client of targetClients) {
-      if (client.whatsapp_jid) {
-        try {
-          await messageService.sendText(client.whatsapp_jid, text);
-          successCount++;
-        } catch (err) {
-          console.error(`Failed to send broadcast to ${client.whatsapp_jid}:`, err);
-          failCount++;
-        }
-      }
-    }
+    // Execute the broadcast loop in the background asynchronously
+    runThrottledBroadcast(targetClients, text).catch(err => {
+      console.error('[Broadcast] Fatal error in background broadcast execution:', err);
+    });
 
-    console.log(`Broadcast completed: sent to ${successCount} successfully, failed for ${failCount}`);
-    return res.json({ success: true, count: successCount, failed: failCount });
   } catch (error: any) {
-    console.error('Failed to broadcast message:', error);
+    console.error('Failed to initiate broadcast message:', error);
     return res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
