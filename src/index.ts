@@ -104,7 +104,7 @@ app.post('/webhook', async (req, res) => {
 
 // ── Send message (called by Next.js server actions) ───────────────────────────
 app.post('/api/send-message', async (req, res) => {
-  const { jid, text, documentUrl, fileName } = req.body;
+  const { jid, text, documentUrl, fileName, buttons } = req.body;
 
   if (!jid || (!text && !documentUrl)) {
     return res.status(400).json({ error: 'Missing jid, text or documentUrl parameter' });
@@ -119,6 +119,9 @@ app.post('/api/send-message', async (req, res) => {
     if (documentUrl) {
       await messageService.sendDocument(jid, documentUrl, fileName || 'ITRV_Acknowledgement.pdf', text || undefined);
       console.log(`Sent document notification to ${jid} with URL: ${documentUrl}`);
+    } else if (buttons && Array.isArray(buttons)) {
+      await messageService.sendButtons(jid, text, buttons);
+      console.log(`Sent manual buttons notification to ${jid}`);
     } else {
       await messageService.sendText(jid, text);
       console.log(`Sent manual text notification to ${jid}`);
