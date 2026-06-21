@@ -10,14 +10,10 @@ import { dscExpiryReminderService } from './services/dsc-expiry-reminder.service
 const app = express();
 app.use(express.json());
 
-// CORS — allow Next.js frontend (3000/3001) to call us
+// CORS — allow Next.js frontend (local or hosted) to call us
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'))) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else {
-    res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
-  }
+  res.header('Access-Control-Allow-Origin', origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
